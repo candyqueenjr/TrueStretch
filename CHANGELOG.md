@@ -2,9 +2,47 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-11-05
+
+### Optimize Max (new)
+- One scan runs **68 checks across 12 categories** and lists **every change on its own** — current value, target
+  value, why it matters, and how big the impact is — with an **optimization score** out of 100.
+- **Windows:** power mode, Game Mode, Xbox Game Bar background recording, optimizations for windowed games,
+  hardware-accelerated GPU scheduling, refresh rate, VALORANT on the fast graphics card, transparency effects,
+  pending restarts.
+- **Windows power plan:** processor minimum state, processor boost mode, core parking, USB selective suspend,
+  PCI Express link power saving, Wi-Fi power saving (plugged-in values only).
+- **NVIDIA:** power management, texture filtering, vertical sync, low latency mode, preferred refresh rate and the
+  driver frame cap — in VALORANT's own program profile only, so other games are untouched.
+- **VALORANT files:** VSync, HDR, dynamic resolution and every graphics quality group, for every account on the PC
+  (and HP OMEN AI's copy).
+- **Startup apps:** each program that starts with Windows, one by one (Discord, Chrome, Overwolf, …).
+- **Background & overlays:** Discord, NVIDIA overlay and Instant Replay, RTSS, Overwolf, Medal, OBS, Wallpaper
+  Engine, and programs using lots of memory — with how to turn each one off.
+- **Your PC:** memory speed (XMP/EXPO) and single-channel memory, SSD or hard drive, Wi-Fi or cable, driver age,
+  battery, memory integrity.
+- **Inside VALORANT / AMD Software / Intel Graphics:** the settings only those programs can change, each with where
+  to change it.
+- Nothing changes until you press Apply. Scanning and applying run in the background with live progress. Every
+  change is **verified** afterwards, and **Undo** puts back the exact original value.
+- **Diagnostics** tab: the full technical report (every value, where it was read, every change made) — copy it or
+  save it to your Desktop. Your Riot account ID is hidden.
+
+### New layout and look
+- VALORANT-style top bar with a centered **PLAY** button; four clear sections: VALORANT, Optimize, My PC, Settings
+  (with Backups and About inside).
+- Tactical design: deep navy, off-white highlights, sharp edges, uppercase condensed headings, framed buttons — and a
+  new logo.
+- Responsive everywhere: content stays centered on wide monitors and reflows on small windows (down to 900 × 600).
+- Faster: only the page on screen redraws.
+
+### Fixed
+- Undo of game-file changes now also restores the copy HP OMEN AI keeps, and removes settings that didn't exist
+  before.
+
 ## [1.0.0] — 2026-11-05
 
-The first public release. 🎉
+The first public release.
 
 ### Stretching
 - True stretched resolution for VALORANT using the 2026 method: the game starts at your native resolution and the

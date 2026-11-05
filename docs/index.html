@@ -1,329 +1,369 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TrueStretch — True stretched resolution for VALORANT</title>
-<meta name="description" content="Free Windows app that gives you true stretched resolution in VALORANT in one click. Fully automatic on NVIDIA, AMD and Intel.">
+<meta name="description" content="Free Windows app: true stretched resolution for VALORANT in one click, plus Optimize Max for every FPS and input-delay setting on your PC. NVIDIA, AMD and Intel.">
 <meta property="og:title" content="TrueStretch — True stretched resolution for VALORANT">
-<meta property="og:description" content="One click, fully automatic, free. NVIDIA, AMD and Intel.">
+<meta property="og:description" content="One click, fully automatic, free. Plus Optimize Max.">
 <meta property="og:image" content="https://candyqueenjr.github.io/TrueStretch/assets/banner.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#0b0d12">
+<meta name="theme-color" content="#0f1923">
 <link rel="icon" type="image/png" href="assets/favicon.png">
+<script>
+  /* Progressive enhancement: hidden pre-animation states only exist under html.motion.
+     If site.js fails to load, everything is shown again after 3s. */
+  (function (h) {
+    h.classList.remove("no-js"); h.classList.add("js");
+    var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce && "IntersectionObserver" in window) h.classList.add("motion");
+    setTimeout(function () { if (!window.TS_READY) { h.classList.remove("motion", "js"); h.classList.add("no-js"); } }, 3000);
+  })(document.documentElement);
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0b0d12; --bg2: #11141b; --surface: #151924; --surface2: #1b2030; --border: #252b3a;
-    --text: #f2f4f8; --muted: #a3abbd; --faint: #6b7385;
-    --accent: #ff4655; --accent2: #ff7a85; --ok: #3ccf8e;
-    --radius: 18px; --max: 1160px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body { background: var(--bg); color: var(--text); font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif;
-         -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-  a { color: inherit; text-decoration: none; }
-  img { max-width: 100%; display: block; }
-  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
-
-  /* nav */
-  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px);
-        background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid transparent;
-        transition: border-color .2s; }
-  nav.scrolled { border-bottom-color: var(--border); }
-  nav .wrap { display: flex; align-items: center; height: 66px; gap: 28px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
-  .brand img { width: 30px; height: 30px; }
-  nav .links { display: flex; gap: 24px; margin-left: auto; color: var(--muted); font-size: 15px; font-weight: 500; }
-  nav .links a:hover { color: var(--text); }
-  .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 12px; font-weight: 700;
-         padding: 13px 22px; transition: transform .15s, box-shadow .2s, background .2s; cursor: pointer; }
-  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 10px 30px -10px rgba(255,70,85,.7); }
-  .btn-primary:hover { background: #ff5d6a; transform: translateY(-1px); box-shadow: 0 16px 40px -12px rgba(255,70,85,.8); }
-  .btn-ghost { border: 1px solid var(--border); color: var(--text); background: var(--surface); }
-  .btn-ghost:hover { border-color: #39415a; }
-  .btn-sm { padding: 9px 16px; font-size: 14px; border-radius: 10px; }
-  .btn svg { width: 18px; height: 18px; }
-
-  /* hero */
-  .hero { position: relative; padding: 84px 0 40px; }
-  .hero::before { content: ""; position: absolute; inset: -200px 0 auto; height: 700px; pointer-events: none;
-    background: radial-gradient(600px 380px at 20% 30%, rgba(255,70,85,.22), transparent 70%),
-                radial-gradient(500px 340px at 85% 10%, rgba(120,90,255,.12), transparent 70%); }
-  .hero-grid { position: relative; display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
-  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 13px;
-          font-weight: 600; color: var(--accent2); background: rgba(255,70,85,.1); border: 1px solid rgba(255,70,85,.25); }
-  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(60,207,142,.18); }
-  h1 { font-size: clamp(40px, 6vw, 66px); line-height: 1.04; letter-spacing: -.035em; font-weight: 900; margin: 22px 0 18px; }
-  h1 .grad { background: linear-gradient(90deg, var(--accent), #ff8a5c); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .lead { font-size: 19px; color: var(--muted); max-width: 520px; }
-  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 32px 0 18px; }
-  .meta { display: flex; flex-wrap: wrap; gap: 18px; color: var(--faint); font-size: 14px; }
-  .meta b { color: var(--muted); font-weight: 600; }
-  .shot { border-radius: 16px; overflow: hidden; border: 1px solid var(--border);
-          box-shadow: 0 40px 100px -30px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.03);
-          transform: perspective(1600px) rotateY(-6deg) rotateX(2deg); transition: transform .5s; }
-  .shot:hover { transform: perspective(1600px) rotateY(0) rotateX(0); }
-
-  /* logos strip */
-  .strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 30px 0 10px; }
-  .chip { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg2);
-          color: var(--muted); font-size: 14px; font-weight: 600; }
-
-  section { padding: 90px 0; }
-  .eyebrow { color: var(--accent2); font-weight: 700; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
-  h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; line-height: 1.1; font-weight: 800; margin: 10px 0 14px; }
-  .sub { color: var(--muted); font-size: 18px; max-width: 640px; }
-  .center { text-align: center; } .center .sub { margin: 0 auto; }
-
-  /* features */
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 48px; }
-  .card { background: linear-gradient(180deg, var(--surface), var(--bg2)); border: 1px solid var(--border);
-          border-radius: var(--radius); padding: 26px; transition: border-color .2s, transform .2s; }
-  .card:hover { border-color: #3a4258; transform: translateY(-2px); }
-  .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px;
-         background: rgba(255,70,85,.12); color: var(--accent2); }
-  .ico svg { width: 22px; height: 22px; }
-  .card h3 { font-size: 18px; margin-bottom: 6px; letter-spacing: -.01em; }
-  .card p { color: var(--muted); font-size: 15px; }
-  kbd { font: 600 12px Inter, sans-serif; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border);
-        background: var(--surface2); color: var(--text); }
-
-  /* steps */
-  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 48px; counter-reset: s; }
-  .step { position: relative; padding: 26px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg2); }
-  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 34px; height: 34px;
-                  border-radius: 10px; background: var(--accent); color: #fff; font-weight: 800; margin-bottom: 16px; }
-  .step h3 { font-size: 17px; margin-bottom: 6px; }
-  .step p { color: var(--muted); font-size: 15px; }
-
-  /* timeline */
-  .timeline { margin-top: 44px; display: grid; grid-template-columns: repeat(5, 1fr); border-radius: var(--radius);
-              overflow: hidden; border: 1px solid var(--border); }
-  .phase { padding: 22px 18px; background: var(--bg2); border-right: 1px solid var(--border); }
-  .phase:last-child { border-right: 0; }
-  .phase .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-bottom: 10px; }
-  .native .tag { background: rgba(163,171,189,.12); color: var(--muted); }
-  .stretched { background: linear-gradient(180deg, rgba(255,70,85,.12), var(--bg2)); }
-  .stretched .tag { background: rgba(255,70,85,.18); color: var(--accent2); }
-  .phase h4 { font-size: 16px; margin-bottom: 4px; } .phase p { color: var(--faint); font-size: 14px; }
-
-  /* gallery */
-  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 48px; }
-  .gallery figure { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--bg2); }
-  .gallery figcaption { padding: 14px 18px; color: var(--muted); font-size: 14px; }
-  .gallery figcaption b { color: var(--text); }
-
-  /* faq */
-  .faq { max-width: 820px; margin: 44px auto 0; display: grid; gap: 12px; }
-  details { border: 1px solid var(--border); border-radius: 14px; background: var(--bg2); padding: 4px 22px; }
-  details[open] { border-color: #3a4258; }
-  summary { cursor: pointer; list-style: none; padding: 16px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 16px; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: "+"; color: var(--accent2); font-size: 22px; line-height: 1; transition: transform .2s; }
-  details[open] summary::after { transform: rotate(45deg); }
-  details p, details ol { color: var(--muted); padding: 0 0 18px; }
-  details ol { padding-left: 20px; } details li { margin: 4px 0; }
-  details a { color: var(--accent2); }
-
-  /* final cta */
-  .final { text-align: center; border-radius: 24px; padding: 64px 24px; border: 1px solid rgba(255,70,85,.3);
-           background: radial-gradient(600px 260px at 50% 0%, rgba(255,70,85,.2), transparent 70%), var(--bg2); }
-  footer { border-top: 1px solid var(--border); padding: 40px 0 56px; color: var(--faint); font-size: 13px; }
-  footer .row { display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; margin-bottom: 20px; }
-  footer .links { display: flex; gap: 20px; flex-wrap: wrap; } footer .links a:hover { color: var(--text); }
-
-  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s, transform .7s; }
-  .reveal.in { opacity: 1; transform: none; }
-  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .shot { transform: none; } }
-
-  @media (max-width: 980px) {
-    .hero-grid { grid-template-columns: 1fr; }
-    .shot { transform: none; }
-    .grid { grid-template-columns: 1fr 1fr; }
-    .steps { grid-template-columns: 1fr 1fr; }
-    .timeline { grid-template-columns: 1fr; }
-    .phase { border-right: 0; border-bottom: 1px solid var(--border); }
-    nav .links { display: none; }
-  }
-  @media (max-width: 620px) {
-    .grid, .steps, .gallery { grid-template-columns: 1fr; }
-    .hero { padding-top: 48px; }
-    section { padding: 64px 0; }
-    .cta .btn { flex: 1 1 100%; justify-content: center; }
-  }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/site.js" defer></script>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
 
-<nav id="nav">
+<header class="nav">
   <div class="wrap">
-    <a class="brand" href="#"><img src="assets/logo.png" alt="">TrueStretch</a>
-    <div class="links">
-      <a href="#features">Features</a><a href="#how">How it works</a><a href="#screens">Screenshots</a><a href="#faq">FAQ</a>
+    <a class="brand" href="#top" aria-label="TrueStretch, back to top"><img src="assets/logo.png" alt="" width="30" height="30">TrueStretch</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#features">Features</a><a href="#how">How it works</a><a href="#optimize">Optimize Max</a><a href="#screens">Screens</a><a href="#faq">FAQ</a>
       <a href="https://github.com/candyqueenjr/TrueStretch">GitHub</a>
-    </div>
-    <a class="btn btn-primary btn-sm dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">Download</a>
-  </div>
-</nav>
-
-<header class="hero">
-  <div class="wrap hero-grid">
-    <div>
-      <span class="pill"><span class="dot"></span><span id="ver">Free · Windows 10 &amp; 11</span></span>
-      <h1>True stretched VALORANT.<br><span class="grad">One click.</span></h1>
-      <p class="lead">Wider models and the classic 4:3 feel — without touching a graphics panel or config file. TrueStretch sets up everything on its own, on any PC.</p>
-      <div class="cta">
-        <a class="btn btn-primary dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
-          Download for Windows</a>
-        <a class="btn btn-ghost" href="#how">How it works</a>
-      </div>
-      <div class="meta"><span><b id="size">~23 MB</b> · one file</span><span><b>No install</b></span><span><b id="dls">Free forever</b></span></div>
-    </div>
-    <div class="shot reveal"><img src="assets/screens/valorant-resolution.png" alt="TrueStretch stretch levels" width="1320" height="860"></div>
-  </div>
-  <div class="wrap strip">
-    <span class="chip">NVIDIA</span><span class="chip">AMD</span><span class="chip">Intel</span><span class="chip">Laptops</span><span class="chip">Every Riot account</span><span class="chip">Auto-updates</span>
+    </nav>
+    <a class="btn btn-red btn-sm" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe"><span class="face">Download</span></a>
+    <button class="burger" type="button" aria-expanded="false" aria-controls="menu" aria-label="Open menu"><i></i><i></i></button>
   </div>
 </header>
 
-<section id="features">
+<nav class="menu" id="menu" aria-label="Menu" inert>
+  <ol>
+    <li style="--i:0"><a href="#features"><small>01</small>Features</a></li>
+    <li style="--i:1"><a href="#how"><small>02</small>How it works</a></li>
+    <li style="--i:2"><a href="#optimize"><small>03</small>Optimize Max</a></li>
+    <li style="--i:3"><a href="#screens"><small>04</small>Screens</a></li>
+    <li style="--i:4"><a href="#faq"><small>05</small>FAQ</a></li>
+  </ol>
+  <div class="menu-foot">
+    <a class="btn btn-red" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe"><span class="face">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>Download for Windows</span></a>
+    <a class="gh" href="https://github.com/candyqueenjr/TrueStretch">GitHub &rarr;</a>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-hero" data-px="-0.45" data-axis="x">Stretch</div></div>
   <div class="wrap">
-    <div class="center reveal">
-      <div class="eyebrow">Features</div>
-      <h2>Everything handled for you</h2>
-      <p class="sub">Built for players who just want to play — not to dig through driver panels and .ini files.</p>
-    </div>
-    <div class="grid">
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg></div>
-        <h3>One-click play</h3><p><b>Play stretched</b> prepares everything and starts VALORANT. Menus stay normal; the stretch kicks in once the map has loaded.</p></div>
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 20 11-11M14 4v2M19 9h2M17.5 5.5 19 4"/></svg></div>
-        <h3>Fully automatic setup</h3><p>Adds the custom resolution to your graphics driver, sets full-screen scaling and the right game settings. No panels, no guides.</p></div>
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/></svg></div>
-        <h3>Four stretch levels</h3><p>Light, Classic 4:3, Strong, Extreme — or custom. Tune it live with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>.</p></div>
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
-        <h3>Knows your PC</h3><p>Screens, graphics, drivers and Windows settings explained in plain words — with one-click fixes for anything that isn't right.</p></div>
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.7 7.5 9 4.3-1.3 7.5-4.5 7.5-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg></div>
-        <h3>Safe by design</h3><p>Backs up every file first. A guard restores your normal resolution even if the app crashes. Never touches the running game.</p></div>
-      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 0 0-14.5-4.5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L21 15"/></svg></div>
-        <h3>Updates itself</h3><p>New versions install in seconds with one click, verified with SHA-256. Your settings stay exactly as they were.</p></div>
+    <p class="label wp" data-r="wipe" style="--dl:60ms"><span class="sq"></span><span id="ver">// Free · Windows 10 &amp; 11</span></p>
+    <h1 class="display hero-title" data-r="lines" style="--dl:220ms">
+      <span class="ln"><span>True stretched.</span></span>
+      <span class="ln"><span class="red">One click.</span></span>
+    </h1>
+    <div class="hero-rule" data-r="rule" style="--dl:420ms"></div>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p class="lead" data-r="txt" style="--dl:520ms">Wider models and the classic 4:3 feel in VALORANT — without touching a graphics panel or a config file. TrueStretch sets up everything on its own, on any PC.</p>
+        <div class="cta" data-r="txt" style="--dl:640ms">
+          <a class="btn btn-red" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe"><span class="face">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>Download for Windows</span></a>
+          <a class="btn btn-line" href="#how"><span class="face">How it works</span></a>
+        </div>
+        <ul class="meta" data-r="txt" style="--dl:740ms">
+          <li><span class="sq"></span><span><b id="size">23 MB</b> · one file</span></li>
+          <li><span class="sq"></span><b>No install</b></li>
+          <li><span class="sq"></span><b id="dls">Free</b></li>
+        </ul>
+        <div class="hero-side" data-r="side" style="--dl:900ms" aria-hidden="true"><i></i>Scroll</div>
+      </div>
+      <div class="frame" data-r="frame" style="--dl:600ms">
+        <i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+        <span class="shot wp"><img src="assets/screens/app.png" alt="TrueStretch home screen with the Play stretched button and the ready-to-play checklist" decoding="async" fetchpriority="high"></span>
+      </div>
     </div>
   </div>
 </section>
 
-<section id="how" style="background:linear-gradient(180deg,transparent,var(--bg2) 30%,transparent)">
+<!-- SPEC STRIP -->
+<div class="specs">
   <div class="wrap">
-    <div class="center reveal">
-      <div class="eyebrow">How it works</div>
-      <h2>Stretched at exactly the right moment</h2>
-      <p class="sub">VALORANT reads your screen's shape when it starts and when agent select loads. TrueStretch keeps it normal at those moments and stretches only once you're in.</p>
+    <ul aria-label="Works with">
+      <li data-r="cell"><small>GPU</small><b>NVIDIA</b></li>
+      <li data-r="cell"><small>GPU</small><b>AMD</b></li>
+      <li data-r="cell"><small>GPU</small><b>Intel</b></li>
+      <li data-r="cell"><small>Device</small><b>Laptops</b></li>
+      <li data-r="cell"><small>Riot</small><b>All accounts</b></li>
+      <li data-r="cell"><small>Updates</small><b>Auto-updates</b></li>
+    </ul>
+  </div>
+</div>
+
+<!-- 01 FEATURES -->
+<section class="sec" id="features">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-num" data-px="0.18">01</div></div>
+  <div class="wrap">
+    <div class="sec-bar" data-r="bar"><span class="label wp"><span class="sq"></span>// 01 Features</span><span class="rule"></span><span class="idx">01 / 05</span></div>
+    <div class="sec-head">
+      <h2 class="display" data-r="lines"><span class="ln"><span>Everything</span></span><span class="ln"><span>handled for you</span></span></h2>
+      <p class="sub" data-r="txt">Built for players who want to play — not dig through driver panels and .ini files.</p>
     </div>
-    <div class="timeline reveal">
-      <div class="phase native"><span class="tag">Native</span><h4>Launch</h4><p>Game starts at your real resolution</p></div>
-      <div class="phase native"><span class="tag">Native</span><h4>Menus</h4><p>Sharp, normal UI</p></div>
-      <div class="phase stretched"><span class="tag">Stretched</span><h4>Range</h4><p>Switches as soon as it loads</p></div>
-      <div class="phase native"><span class="tag">Native</span><h4>Match found · Agent select</h4><p>Back to normal before the game checks</p></div>
-      <div class="phase stretched"><span class="tag">Stretched</span><h4>In the match</h4><p>Whole match, every round</p></div>
-    </div>
-    <div class="steps">
-      <div class="step reveal"><h3>Download</h3><p>One small .exe — nothing to install.</p></div>
-      <div class="step reveal"><h3>Open it</h3><p>A quick tour scans your PC and explains what it found.</p></div>
-      <div class="step reveal"><h3>Pick a level</h3><p>How much wider do you want models?</p></div>
-      <div class="step reveal"><h3>Play stretched</h3><p>One Windows prompt, then you're in.</p></div>
+    <div class="cards">
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">01<span class="sq"></span></div><h3>One-click play</h3><p><b>Play stretched</b> prepares everything and starts VALORANT. Menus stay normal; the stretch switches on once the map has loaded.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">02<span class="sq"></span></div><h3>Fully automatic setup</h3><p>Adds the custom resolution to your graphics driver, sets full-screen scaling and the right game settings. No panels, no guides.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">03<span class="sq"></span></div><h3>Four stretch levels</h3><p>Light, Classic 4:3, Strong, Extreme — or custom. Tune it live in a match with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">04<span class="sq"></span></div><h3>Optimize Max</h3><p>Scans every FPS and input-delay setting on your PC and lists each change on its own — current value, target, and why.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">05<span class="sq"></span></div><h3>Safe by design</h3><p>Backs up every file first and every change can be undone. A guard restores your resolution even if the app crashes.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">06<span class="sq"></span></div><h3>Updates itself</h3><p>New versions install in seconds with one click, checked with SHA-256 first. Your settings stay as they are.</p></article>
     </div>
   </div>
 </section>
 
-<section id="screens">
+<!-- 02 HOW IT WORKS (cream) -->
+<section class="sec cream cut" id="how">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-num" data-px="0.18">02</div></div>
   <div class="wrap">
-    <div class="center reveal">
-      <div class="eyebrow">Screenshots</div>
-      <h2>Clean, fast, and clear</h2>
+    <div class="sec-bar" data-r="bar"><span class="label wp"><span class="sq"></span>// 02 How it works</span><span class="rule"></span><span class="idx">02 / 05</span></div>
+    <div class="sec-head">
+      <h2 class="display" data-r="lines"><span class="ln"><span>Stretched at</span></span><span class="ln"><span>the right moment</span></span></h2>
+      <p class="sub" data-r="txt">VALORANT reads your screen's shape when it starts and when agent select loads. TrueStretch keeps it normal at those moments and stretches only once you're in.</p>
+    </div>
+
+    <div class="tl" data-r="tl">
+      <div class="tl-sweep" aria-hidden="true"></div>
+      <ol class="tl-list">
+        <li class="seg" style="--n:0"><span class="seg-tag"><span class="sq"></span>Native</span>
+          <svg viewBox="0 0 56 32" aria-hidden="true"><rect x="1" y="1" width="54" height="30"/></svg>
+          <h3>Launch</h3><p>Starts at your real resolution</p></li>
+        <li class="seg" style="--n:1"><span class="seg-tag"><span class="sq"></span>Native</span>
+          <svg viewBox="0 0 56 32" aria-hidden="true"><rect x="1" y="1" width="54" height="30"/></svg>
+          <h3>Menus</h3><p>Sharp, normal UI</p></li>
+        <li class="seg on" style="--n:2"><span class="seg-tag"><span class="sq"></span>Stretched</span>
+          <svg viewBox="0 0 56 32" aria-hidden="true"><rect x="1" y="1" width="54" height="30"/><rect x="16" y="7" width="24" height="18" stroke-dasharray="3 3"/><path class="arrows" d="M14 16H5m3-3-3 3 3 3M42 16h9m-3-3 3 3-3 3"/></svg>
+          <h3>Range</h3><p>Switches as soon as it loads</p></li>
+        <li class="seg" style="--n:3"><span class="seg-tag"><span class="sq"></span>Native</span>
+          <svg viewBox="0 0 56 32" aria-hidden="true"><rect x="1" y="1" width="54" height="30"/></svg>
+          <h3>Match found</h3><p>Back to normal before agent select</p></li>
+        <li class="seg on" style="--n:4"><span class="seg-tag"><span class="sq"></span>Stretched</span>
+          <svg viewBox="0 0 56 32" aria-hidden="true"><rect x="1" y="1" width="54" height="30"/><rect x="16" y="7" width="24" height="18" stroke-dasharray="3 3"/><path class="arrows" d="M14 16H5m3-3-3 3 3 3M42 16h9m-3-3 3 3-3 3"/></svg>
+          <h3>In the match</h3><p>Every round, start to end</p></li>
+      </ol>
+    </div>
+    <div class="tl-legend" aria-hidden="true"><span><i></i>Native resolution</span><span><i class="f"></i>True stretched</span></div>
+
+    <ol class="steps">
+      <li class="step" data-r="cell"><span class="step-n">01</span><p>Download one small .exe — nothing to install.</p></li>
+      <li class="step" data-r="cell"><span class="step-n">02</span><p>Open it. A quick tour scans your PC.</p></li>
+      <li class="step" data-r="cell"><span class="step-n">03</span><p>Pick how much wider models should be.</p></li>
+      <li class="step" data-r="cell"><span class="step-n">04</span><p>Press Play stretched. One Windows prompt, then you're in.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 03 OPTIMIZE MAX (dark) -->
+<section class="sec dark" id="optimize">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-num" data-px="0.18">03</div></div>
+  <div class="wrap">
+    <div class="sec-bar" data-r="bar"><span class="label wp"><span class="sq"></span>// 03 Optimize Max</span><span class="rule"></span><span class="idx">03 / 05</span></div>
+    <div class="opt-grid">
+      <div class="opt-copy">
+        <h2 class="display" data-r="lines"><span class="ln"><span>Every frame</span></span><span class="ln"><span class="red">you can get</span></span></h2>
+        <p class="sub" data-r="txt">One scan checks everything on your PC that affects VALORANT's FPS and input delay. Each change is listed separately — nothing is bundled, nothing changes until you press Apply.</p>
+        <div class="stats">
+          <div class="stat" data-r="cell"><b><span data-count="7" data-pad="2">07</span></b><small>Categories scanned</small></div>
+          <div class="stat" data-r="cell"><b><span data-count="100">100</span><span class="u">%</span></b><small>Of changes undoable</small></div>
+          <div class="stat" data-r="cell"><b>0</b><small>Changes before you press Apply</small></div>
+        </div>
+        <ol class="cats">
+          <li data-r="cell"><span class="cat-n">01</span><div><h3>Windows</h3><p>Power mode, Game Mode, Game Bar recording, windowed-game optimizations, GPU scheduling, refresh rate.</p></div></li>
+          <li data-r="cell"><span class="cat-n">02</span><div><h3>Graphics card</h3><p>NVIDIA power, texture filtering and VSync, for VALORANT's profile only.</p></div></li>
+          <li data-r="cell"><span class="cat-n">03</span><div><h3>VALORANT files</h3><p>VSync and every graphics quality group, for all your accounts.</p></div></li>
+          <li data-r="cell"><span class="cat-n">04</span><div><h3>Startup apps</h3><p>Programs that start with Windows and keep running while you play.</p></div></li>
+          <li data-r="cell"><span class="cat-n">05</span><div><h3>Background &amp; overlays</h3><p>Apps and overlays that run alongside the game.</p></div></li>
+          <li data-r="cell"><span class="cat-n">06</span><div><h3>Network</h3><p>Connection settings that can add delay.</p></div></li>
+          <li data-r="cell"><span class="cat-n">07</span><div><h3>Inside VALORANT</h3><p>Settings you set in the game's own menu, listed with the value to pick.</p></div></li>
+        </ol>
+      </div>
+      <div class="opt-media">
+        <div>
+          <div class="frame" data-r="frame">
+            <i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+            <span class="shot wp"><img src="assets/screens/optimize-score.png" alt="Optimize Max summary: how many settings can improve, are already optimized, or are set inside VALORANT" loading="lazy" decoding="async"></span>
+          </div>
+          <p class="cap"><span class="sq"></span>Summary · what can improve</p>
+        </div>
+        <div class="frame" data-r="frame" style="--dl:120ms">
+          <i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+          <span class="shot wp"><img src="assets/screens/optimize.png" alt="Optimize Max list: each setting with its current value, target value and impact" loading="lazy" decoding="async"></span>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="display pillars-head" data-r="lines"><span class="ln"><span>Every change listed</span></span><span class="ln"><span>on its own</span></span></h3>
+    <div class="pillars">
+      <div class="pillar" data-r="cell"><p class="label"><span class="sq"></span>01</p><h3>Listed on its own</h3><p>Current value, target, and why. Nothing is bundled, nothing changes until you press Apply.</p></div>
+      <div class="pillar" data-r="cell"><p class="label"><span class="sq"></span>02</p><h3>Verified</h3><p>Every change is checked after applying, so you know it actually took.</p></div>
+      <div class="pillar" data-r="cell"><p class="label"><span class="sq"></span>03</p><h3>Undoable</h3><p>One click puts back the exact original value. It never touches security settings.</p></div>
+    </div>
+
+    <div class="diag">
+      <div class="frame" data-r="frame">
+        <i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+        <span class="shot wp"><img src="assets/screens/diagnostics.png" alt="Diagnostics tab: the full technical report with every value and where it was read" loading="lazy" decoding="async"></span>
+      </div>
+      <div>
+        <p class="label wp" data-r="wipe"><span class="sq"></span>// Diagnostics</p>
+        <h3 data-r="txt">The full technical report</h3>
+        <p data-r="txt">Every value, where it was read, and every change TrueStretch made. Open the Diagnostics tab in Optimize Max whenever you want the details.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 SCREENS -->
+<section class="sec" id="screens">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-num" data-px="0.18">04</div></div>
+  <div class="wrap">
+    <div class="sec-bar" data-r="bar"><span class="label wp"><span class="sq"></span>// 04 Screens</span><span class="rule"></span><span class="idx">04 / 05</span></div>
+    <div class="sec-head">
+      <h2 class="display" data-r="lines"><span class="ln"><span>Inside</span></span><span class="ln"><span>the app</span></span></h2>
+      <p class="sub" data-r="txt">Select a screenshot to view it full size.</p>
     </div>
     <div class="gallery">
-      <figure class="reveal"><img src="assets/screens/home.png" alt="Home" loading="lazy" width="1320" height="860"><figcaption><b>Home</b> — ready-to-play checklist at a glance</figcaption></figure>
-      <figure class="reveal"><img src="assets/screens/my-pc.png" alt="My PC" loading="lazy" width="1320" height="860"><figcaption><b>My PC</b> — your whole setup, explained</figcaption></figure>
-      <figure class="reveal"><img src="assets/screens/valorant.png" alt="VALORANT page" loading="lazy" width="1320" height="860"><figcaption><b>VALORANT</b> — accounts, display and launch options</figcaption></figure>
-      <figure class="reveal"><img src="assets/screens/update-available.png" alt="Update" loading="lazy" width="1320" height="860"><figcaption><b>Auto-updates</b> — one click, verified</figcaption></figure>
+      <button class="g-item" type="button" data-full="assets/screens/stretch.png">
+        <span class="frame" data-r="frame"><i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+          <span class="shot wp"><img src="assets/screens/stretch.png" alt="Stretch level picker: Light, Classic 4:3, Strong, Extreme or custom" loading="lazy" decoding="async"></span></span>
+        <span class="g-cap"><span class="g-n">04.1</span><span class="g-t"><b>Stretch levels</b>Light, Classic 4:3, Strong, Extreme</span><span class="g-open" aria-hidden="true"></span></span>
+      </button>
+      <button class="g-item" type="button" data-full="assets/screens/mypc.png">
+        <span class="frame" data-r="frame"><i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+          <span class="shot wp"><img src="assets/screens/mypc.png" alt="My PC page: your setup, explained" loading="lazy" decoding="async"></span></span>
+        <span class="g-cap"><span class="g-n">04.2</span><span class="g-t"><b>My PC</b>Your setup, explained</span><span class="g-open" aria-hidden="true"></span></span>
+      </button>
+      <button class="g-item" type="button" data-full="assets/screens/diagnostics.png">
+        <span class="frame" data-r="frame"><i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+          <span class="shot wp"><img src="assets/screens/diagnostics.png" alt="Diagnostics: full technical report" loading="lazy" decoding="async"></span></span>
+        <span class="g-cap"><span class="g-n">04.3</span><span class="g-t"><b>Diagnostics</b>Full technical report</span><span class="g-open" aria-hidden="true"></span></span>
+      </button>
+      <button class="g-item" type="button" data-full="assets/screens/app.png">
+        <span class="frame" data-r="frame"><i class="b tl"></i><i class="b tr"></i><i class="b bl"></i><i class="b br"></i>
+          <span class="shot wp"><img src="assets/screens/app.png" alt="Home: ready-to-play checklist" loading="lazy" decoding="async"></span></span>
+        <span class="g-cap"><span class="g-n">04.4</span><span class="g-t"><b>Home</b>Ready-to-play checklist</span><span class="g-open" aria-hidden="true"></span></span>
+      </button>
     </div>
   </div>
 </section>
 
-<section id="faq">
+<!-- 05 FAQ (cream) -->
+<section class="sec cream cut" id="faq">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-num" data-px="0.18">05</div></div>
   <div class="wrap">
-    <div class="center reveal"><div class="eyebrow">FAQ</div><h2>Questions</h2></div>
-    <div class="faq">
-      <details><summary>Windows says “Windows protected your PC”. Is that normal?</summary>
-        <p>Yes. TrueStretch is free and isn't code-signed, so Windows shows this for it like for any new program. Click <b>More info → Run anyway</b>. You can verify your file is genuine with the SHA-256 checksum on the <a href="https://github.com/candyqueenjr/TrueStretch/releases/latest">release page</a>.</p></details>
-      <details><summary>Is it safe for my account?</summary>
-        <p>TrueStretch only changes your Windows resolution, graphics-driver scaling and VALORANT's own settings file — the same things you could change by hand. It never reads or modifies game memory and never interacts with Vanguard. Riot doesn't officially support true stretched resolution and we can't speak for Riot, so use it at your own risk.</p></details>
-      <details><summary>Does it work on AMD, Intel and laptops?</summary>
-        <p>Yes. It adds the resolution through your graphics driver, and if a driver refuses, it automatically uses the closest stretched resolution your screen already has.</p></details>
-      <details><summary>It's not stretched — what now?</summary>
-        <ol><li>Keep TrueStretch running (tray icon) and start VALORANT with <b>Play stretched</b>.</li>
-          <li>The stretch switches on after the map loads — menus stay normal on purpose.</li>
-          <li>Still not working? <b>Settings → Support file</b>, then <a href="https://github.com/candyqueenjr/TrueStretch/issues/new?template=bug_report.yml">open a bug report</a> and attach it.</li></ol></details>
-      <details><summary>Does it collect data?</summary>
-        <p>No. The only network request is an anonymous check for updates on GitHub, which you can turn off in Settings.</p></details>
-      <details><summary>How do I undo everything?</summary>
-        <p>VALORANT page → <b>Restore normal</b> puts your original settings back; <b>My PC</b> can turn the monitor drivers back on.</p></details>
+    <div class="sec-bar" data-r="bar"><span class="label wp"><span class="sq"></span>// 05 FAQ</span><span class="rule"></span><span class="idx">05 / 05</span></div>
+    <div class="faq-grid">
+      <div class="faq-head">
+        <h2 class="display" data-r="lines"><span class="ln"><span>Questions</span></span></h2>
+        <p class="sub" data-r="txt">Something else? <a href="https://github.com/candyqueenjr/TrueStretch/discussions">Ask in Discussions</a> or <a href="https://github.com/candyqueenjr/TrueStretch/issues/new/choose">report a problem</a>.</p>
+      </div>
+      <div class="faq-list">
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q1" aria-controls="a1"><span class="q-n">01</span><span>Windows says “Windows protected your PC”</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a1" role="region" aria-labelledby="q1"><div class="a-in">
+            <p>That's normal for free programs that aren't code-signed. Click <b>More info → Run anyway</b>. You can check your file is genuine with the SHA-256 checksum on the <a href="https://github.com/candyqueenjr/TrueStretch/releases/latest">release page</a>.</p>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q2" aria-controls="a2"><span class="q-n">02</span><span>Is it safe for my account?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a2" role="region" aria-labelledby="q2"><div class="a-in">
+            <p>TrueStretch only changes your Windows resolution, graphics-driver settings and VALORANT's own settings file — the same things you could change by hand. It never reads or modifies game memory and never interacts with Vanguard. Riot doesn't officially support true stretched resolution and we can't speak for Riot, so use it at your own risk.</p>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q3" aria-controls="a3"><span class="q-n">03</span><span>Does it work on AMD, Intel and laptops?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a3" role="region" aria-labelledby="q3"><div class="a-in">
+            <p>Yes. It adds the resolution through your graphics driver, and if a driver refuses, it automatically uses the closest stretched resolution your screen already has.</p>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q4" aria-controls="a4"><span class="q-n">04</span><span>It's not stretched — what now?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a4" role="region" aria-labelledby="q4"><div class="a-in">
+            <ol><li>Keep TrueStretch running (tray icon) and start VALORANT with <b>Play stretched</b>.</li>
+              <li>The stretch switches on after the map loads — menus stay normal on purpose.</li>
+              <li>Still not working? <b>Settings → Support file</b>, then <a href="https://github.com/candyqueenjr/TrueStretch/issues/new?template=bug_report.yml">open a bug report</a> and attach it.</li></ol>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q5" aria-controls="a5"><span class="q-n">05</span><span>Will Optimize Max change things without asking?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a5" role="region" aria-labelledby="q5"><div class="a-in">
+            <p>No. It only lists what it found. You choose what to apply, each change is verified afterwards, and <b>Undo</b> puts back the exact original value. It never touches security settings.</p>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q6" aria-controls="a6"><span class="q-n">06</span><span>Does it collect data?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a6" role="region" aria-labelledby="q6"><div class="a-in">
+            <p>No. The only network request is an anonymous check for updates on GitHub, which you can turn off in Settings.</p>
+          </div></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-<section>
+<!-- FINAL CTA -->
+<section class="final">
+  <div class="ghost-wrap" aria-hidden="true"><div class="ghost ghost-final" data-px="0.35" data-axis="x">Stretch it</div></div>
   <div class="wrap">
-    <div class="final reveal">
-      <h2>Ready to stretch?</h2>
-      <p class="sub" style="margin:0 auto 28px">Free, one file, set up in a minute.</p>
-      <a class="btn btn-primary dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
-        Download TrueStretch</a>
+    <p class="label wp" data-r="wipe"><span class="sq"></span>// Ready</p>
+    <h2 class="display final-title" data-r="lines"><span class="ln"><span>Stretch <span class="red">it.</span></span></span></h2>
+    <p class="sub" data-r="txt">Free, one file, set up in a minute.</p>
+    <div data-r="txt">
+      <a class="btn btn-red btn-lg" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe"><span class="face">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>Download TrueStretch</span></a>
     </div>
   </div>
 </section>
 
-<footer>
+</main>
+
+<footer class="foot">
   <div class="wrap">
-    <div class="row">
-      <a class="brand" href="#"><img src="assets/logo.png" alt="">TrueStretch</a>
-      <div class="links">
+    <div class="foot-top">
+      <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="30" height="30" loading="lazy" decoding="async">TrueStretch</a>
+      <nav class="foot-links" aria-label="Project">
         <a href="https://github.com/candyqueenjr/TrueStretch/releases">Releases</a>
         <a href="https://github.com/candyqueenjr/TrueStretch/blob/main/CHANGELOG.md">Changelog</a>
         <a href="https://github.com/candyqueenjr/TrueStretch/issues/new/choose">Report a problem</a>
         <a href="https://github.com/candyqueenjr/TrueStretch/discussions">Discussions</a>
         <a href="https://github.com/candyqueenjr/TrueStretch/blob/main/SECURITY.md">Security</a>
-      </div>
+      </nav>
     </div>
-    <p>TrueStretch isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, VALORANT, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</p>
+    <div class="foot-rule" data-r="rule"></div>
+    <p class="legal">TrueStretch isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, VALORANT, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</p>
   </div>
 </footer>
 
-<script>
-  const nav = document.getElementById("nav");
-  addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
-
-  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
-  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
-
-  // Live version, size and download count from GitHub (falls back silently).
-  fetch("https://api.github.com/repos/candyqueenjr/TrueStretch/releases")
-    .then(r => r.ok ? r.json() : Promise.reject())
-    .then(releases => {
-      if (!releases.length) return;
-      const latest = releases.find(r => !r.prerelease && !r.draft) || releases[0];
-      const exe = latest.assets.find(a => a.name === "TrueStretch.exe");
-      document.getElementById("ver").textContent = `Version ${latest.tag_name.replace(/^v/, "")} · Free · Windows 10 & 11`;
-      if (exe) document.getElementById("size").textContent = `${(exe.size / 1048576).toFixed(0)} MB`;
-      const total = releases.reduce((n, r) => n + r.assets.filter(a => a.name === "TrueStretch.exe").reduce((m, a) => m + a.download_count, 0), 0);
-      if (total >= 10) document.getElementById("dls").textContent = `${total.toLocaleString()} downloads`;
-    })
-    .catch(() => {});
-</script>
+<dialog class="lb" id="lb" aria-label="Screenshot viewer">
+  <div class="lb-bar">
+    <span class="label lb-count" id="lb-count">01 / 04</span>
+    <span class="lb-cap" id="lb-cap"></span>
+    <button class="lb-x" type="button" id="lb-x" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
+  </div>
+  <div class="lb-stage" id="lb-stage">
+    <figure class="lb-fig" id="lb-fig"><img id="lb-img" alt="" decoding="async"></figure>
+  </div>
+  <div class="lb-foot">
+    <button class="lb-nav" type="button" id="lb-prev" aria-label="Previous screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <span class="lb-hint">← → to browse · Esc to close</span>
+    <button class="lb-nav" type="button" id="lb-next" aria-label="Next screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+</dialog>
 </body>
 </html>

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrueStretch — True stretched resolution for VALORANT</title>
+<meta name="description" content="Free Windows app that gives you true stretched resolution in VALORANT in one click. Fully automatic on NVIDIA, AMD and Intel.">
+<meta property="og:title" content="TrueStretch — True stretched resolution for VALORANT">
+<meta property="og:description" content="One click, fully automatic, free. NVIDIA, AMD and Intel.">
+<meta property="og:image" content="https://candyqueenjr.github.io/TrueStretch/assets/banner.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d12; --bg2: #11141b; --surface: #151924; --surface2: #1b2030; --border: #252b3a;
+    --text: #f2f4f8; --muted: #a3abbd; --faint: #6b7385;
+    --accent: #ff4655; --accent2: #ff7a85; --ok: #3ccf8e;
+    --radius: 18px; --max: 1160px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif;
+         -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px);
+        background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid transparent;
+        transition: border-color .2s; }
+  nav.scrolled { border-bottom-color: var(--border); }
+  nav .wrap { display: flex; align-items: center; height: 66px; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+  .brand img { width: 30px; height: 30px; }
+  nav .links { display: flex; gap: 24px; margin-left: auto; color: var(--muted); font-size: 15px; font-weight: 500; }
+  nav .links a:hover { color: var(--text); }
+  .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 12px; font-weight: 700;
+         padding: 13px 22px; transition: transform .15s, box-shadow .2s, background .2s; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 10px 30px -10px rgba(255,70,85,.7); }
+  .btn-primary:hover { background: #ff5d6a; transform: translateY(-1px); box-shadow: 0 16px 40px -12px rgba(255,70,85,.8); }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); background: var(--surface); }
+  .btn-ghost:hover { border-color: #39415a; }
+  .btn-sm { padding: 9px 16px; font-size: 14px; border-radius: 10px; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* hero */
+  .hero { position: relative; padding: 84px 0 40px; }
+  .hero::before { content: ""; position: absolute; inset: -200px 0 auto; height: 700px; pointer-events: none;
+    background: radial-gradient(600px 380px at 20% 30%, rgba(255,70,85,.22), transparent 70%),
+                radial-gradient(500px 340px at 85% 10%, rgba(120,90,255,.12), transparent 70%); }
+  .hero-grid { position: relative; display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 13px;
+          font-weight: 600; color: var(--accent2); background: rgba(255,70,85,.1); border: 1px solid rgba(255,70,85,.25); }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(60,207,142,.18); }
+  h1 { font-size: clamp(40px, 6vw, 66px); line-height: 1.04; letter-spacing: -.035em; font-weight: 900; margin: 22px 0 18px; }
+  h1 .grad { background: linear-gradient(90deg, var(--accent), #ff8a5c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 19px; color: var(--muted); max-width: 520px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 32px 0 18px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 18px; color: var(--faint); font-size: 14px; }
+  .meta b { color: var(--muted); font-weight: 600; }
+  .shot { border-radius: 16px; overflow: hidden; border: 1px solid var(--border);
+          box-shadow: 0 40px 100px -30px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.03);
+          transform: perspective(1600px) rotateY(-6deg) rotateX(2deg); transition: transform .5s; }
+  .shot:hover { transform: perspective(1600px) rotateY(0) rotateX(0); }
+
+  /* logos strip */
+  .strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 30px 0 10px; }
+  .chip { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg2);
+          color: var(--muted); font-size: 14px; font-weight: 600; }
+
+  section { padding: 90px 0; }
+  .eyebrow { color: var(--accent2); font-weight: 700; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+  h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; line-height: 1.1; font-weight: 800; margin: 10px 0 14px; }
+  .sub { color: var(--muted); font-size: 18px; max-width: 640px; }
+  .center { text-align: center; } .center .sub { margin: 0 auto; }
+
+  /* features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 48px; }
+  .card { background: linear-gradient(180deg, var(--surface), var(--bg2)); border: 1px solid var(--border);
+          border-radius: var(--radius); padding: 26px; transition: border-color .2s, transform .2s; }
+  .card:hover { border-color: #3a4258; transform: translateY(-2px); }
+  .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px;
+         background: rgba(255,70,85,.12); color: var(--accent2); }
+  .ico svg { width: 22px; height: 22px; }
+  .card h3 { font-size: 18px; margin-bottom: 6px; letter-spacing: -.01em; }
+  .card p { color: var(--muted); font-size: 15px; }
+  kbd { font: 600 12px Inter, sans-serif; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border);
+        background: var(--surface2); color: var(--text); }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 48px; counter-reset: s; }
+  .step { position: relative; padding: 26px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg2); }
+  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 34px; height: 34px;
+                  border-radius: 10px; background: var(--accent); color: #fff; font-weight: 800; margin-bottom: 16px; }
+  .step h3 { font-size: 17px; margin-bottom: 6px; }
+  .step p { color: var(--muted); font-size: 15px; }
+
+  /* timeline */
+  .timeline { margin-top: 44px; display: grid; grid-template-columns: repeat(5, 1fr); border-radius: var(--radius);
+              overflow: hidden; border: 1px solid var(--border); }
+  .phase { padding: 22px 18px; background: var(--bg2); border-right: 1px solid var(--border); }
+  .phase:last-child { border-right: 0; }
+  .phase .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-bottom: 10px; }
+  .native .tag { background: rgba(163,171,189,.12); color: var(--muted); }
+  .stretched { background: linear-gradient(180deg, rgba(255,70,85,.12), var(--bg2)); }
+  .stretched .tag { background: rgba(255,70,85,.18); color: var(--accent2); }
+  .phase h4 { font-size: 16px; margin-bottom: 4px; } .phase p { color: var(--faint); font-size: 14px; }
+
+  /* gallery */
+  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 48px; }
+  .gallery figure { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--bg2); }
+  .gallery figcaption { padding: 14px 18px; color: var(--muted); font-size: 14px; }
+  .gallery figcaption b { color: var(--text); }
+
+  /* faq */
+  .faq { max-width: 820px; margin: 44px auto 0; display: grid; gap: 12px; }
+  details { border: 1px solid var(--border); border-radius: 14px; background: var(--bg2); padding: 4px 22px; }
+  details[open] { border-color: #3a4258; }
+  summary { cursor: pointer; list-style: none; padding: 16px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 16px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--accent2); font-size: 22px; line-height: 1; transition: transform .2s; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p, details ol { color: var(--muted); padding: 0 0 18px; }
+  details ol { padding-left: 20px; } details li { margin: 4px 0; }
+  details a { color: var(--accent2); }
+
+  /* final cta */
+  .final { text-align: center; border-radius: 24px; padding: 64px 24px; border: 1px solid rgba(255,70,85,.3);
+           background: radial-gradient(600px 260px at 50% 0%, rgba(255,70,85,.2), transparent 70%), var(--bg2); }
+  footer { border-top: 1px solid var(--border); padding: 40px 0 56px; color: var(--faint); font-size: 13px; }
+  footer .row { display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; margin-bottom: 20px; }
+  footer .links { display: flex; gap: 20px; flex-wrap: wrap; } footer .links a:hover { color: var(--text); }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s, transform .7s; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .shot { transform: none; } }
+
+  @media (max-width: 980px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .shot { transform: none; }
+    .grid { grid-template-columns: 1fr 1fr; }
+    .steps { grid-template-columns: 1fr 1fr; }
+    .timeline { grid-template-columns: 1fr; }
+    .phase { border-right: 0; border-bottom: 1px solid var(--border); }
+    nav .links { display: none; }
+  }
+  @media (max-width: 620px) {
+    .grid, .steps, .gallery { grid-template-columns: 1fr; }
+    .hero { padding-top: 48px; }
+    section { padding: 64px 0; }
+    .cta .btn { flex: 1 1 100%; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/logo.png" alt="">TrueStretch</a>
+    <div class="links">
+      <a href="#features">Features</a><a href="#how">How it works</a><a href="#screens">Screenshots</a><a href="#faq">FAQ</a>
+      <a href="https://github.com/candyqueenjr/TrueStretch">GitHub</a>
+    </div>
+    <a class="btn btn-primary btn-sm dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">Download</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="pill"><span class="dot"></span><span id="ver">Free · Windows 10 &amp; 11</span></span>
+      <h1>True stretched VALORANT.<br><span class="grad">One click.</span></h1>
+      <p class="lead">Wider models and the classic 4:3 feel — without touching a graphics panel or config file. TrueStretch sets up everything on its own, on any PC.</p>
+      <div class="cta">
+        <a class="btn btn-primary dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
+          Download for Windows</a>
+        <a class="btn btn-ghost" href="#how">How it works</a>
+      </div>
+      <div class="meta"><span><b id="size">~23 MB</b> · one file</span><span><b>No install</b></span><span><b id="dls">Free forever</b></span></div>
+    </div>
+    <div class="shot reveal"><img src="assets/screens/valorant-resolution.png" alt="TrueStretch stretch levels" width="1320" height="860"></div>
+  </div>
+  <div class="wrap strip">
+    <span class="chip">NVIDIA</span><span class="chip">AMD</span><span class="chip">Intel</span><span class="chip">Laptops</span><span class="chip">Every Riot account</span><span class="chip">Auto-updates</span>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">Features</div>
+      <h2>Everything handled for you</h2>
+      <p class="sub">Built for players who just want to play — not to dig through driver panels and .ini files.</p>
+    </div>
+    <div class="grid">
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg></div>
+        <h3>One-click play</h3><p><b>Play stretched</b> prepares everything and starts VALORANT. Menus stay normal; the stretch kicks in once the map has loaded.</p></div>
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 20 11-11M14 4v2M19 9h2M17.5 5.5 19 4"/></svg></div>
+        <h3>Fully automatic setup</h3><p>Adds the custom resolution to your graphics driver, sets full-screen scaling and the right game settings. No panels, no guides.</p></div>
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/></svg></div>
+        <h3>Four stretch levels</h3><p>Light, Classic 4:3, Strong, Extreme — or custom. Tune it live with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>.</p></div>
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+        <h3>Knows your PC</h3><p>Screens, graphics, drivers and Windows settings explained in plain words — with one-click fixes for anything that isn't right.</p></div>
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.7 7.5 9 4.3-1.3 7.5-4.5 7.5-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg></div>
+        <h3>Safe by design</h3><p>Backs up every file first. A guard restores your normal resolution even if the app crashes. Never touches the running game.</p></div>
+      <div class="card reveal"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 0 0-14.5-4.5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L21 15"/></svg></div>
+        <h3>Updates itself</h3><p>New versions install in seconds with one click, verified with SHA-256. Your settings stay exactly as they were.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="background:linear-gradient(180deg,transparent,var(--bg2) 30%,transparent)">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">How it works</div>
+      <h2>Stretched at exactly the right moment</h2>
+      <p class="sub">VALORANT reads your screen's shape when it starts and when agent select loads. TrueStretch keeps it normal at those moments and stretches only once you're in.</p>
+    </div>
+    <div class="timeline reveal">
+      <div class="phase native"><span class="tag">Native</span><h4>Launch</h4><p>Game starts at your real resolution</p></div>
+      <div class="phase native"><span class="tag">Native</span><h4>Menus</h4><p>Sharp, normal UI</p></div>
+      <div class="phase stretched"><span class="tag">Stretched</span><h4>Range</h4><p>Switches as soon as it loads</p></div>
+      <div class="phase native"><span class="tag">Native</span><h4>Match found · Agent select</h4><p>Back to normal before the game checks</p></div>
+      <div class="phase stretched"><span class="tag">Stretched</span><h4>In the match</h4><p>Whole match, every round</p></div>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><h3>Download</h3><p>One small .exe — nothing to install.</p></div>
+      <div class="step reveal"><h3>Open it</h3><p>A quick tour scans your PC and explains what it found.</p></div>
+      <div class="step reveal"><h3>Pick a level</h3><p>How much wider do you want models?</p></div>
+      <div class="step reveal"><h3>Play stretched</h3><p>One Windows prompt, then you're in.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">Screenshots</div>
+      <h2>Clean, fast, and clear</h2>
+    </div>
+    <div class="gallery">
+      <figure class="reveal"><img src="assets/screens/home.png" alt="Home" loading="lazy" width="1320" height="860"><figcaption><b>Home</b> — ready-to-play checklist at a glance</figcaption></figure>
+      <figure class="reveal"><img src="assets/screens/my-pc.png" alt="My PC" loading="lazy" width="1320" height="860"><figcaption><b>My PC</b> — your whole setup, explained</figcaption></figure>
+      <figure class="reveal"><img src="assets/screens/valorant.png" alt="VALORANT page" loading="lazy" width="1320" height="860"><figcaption><b>VALORANT</b> — accounts, display and launch options</figcaption></figure>
+      <figure class="reveal"><img src="assets/screens/update-available.png" alt="Update" loading="lazy" width="1320" height="860"><figcaption><b>Auto-updates</b> — one click, verified</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="center reveal"><div class="eyebrow">FAQ</div><h2>Questions</h2></div>
+    <div class="faq">
+      <details><summary>Windows says “Windows protected your PC”. Is that normal?</summary>
+        <p>Yes. TrueStretch is free and isn't code-signed, so Windows shows this for it like for any new program. Click <b>More info → Run anyway</b>. You can verify your file is genuine with the SHA-256 checksum on the <a href="https://github.com/candyqueenjr/TrueStretch/releases/latest">release page</a>.</p></details>
+      <details><summary>Is it safe for my account?</summary>
+        <p>TrueStretch only changes your Windows resolution, graphics-driver scaling and VALORANT's own settings file — the same things you could change by hand. It never reads or modifies game memory and never interacts with Vanguard. Riot doesn't officially support true stretched resolution and we can't speak for Riot, so use it at your own risk.</p></details>
+      <details><summary>Does it work on AMD, Intel and laptops?</summary>
+        <p>Yes. It adds the resolution through your graphics driver, and if a driver refuses, it automatically uses the closest stretched resolution your screen already has.</p></details>
+      <details><summary>It's not stretched — what now?</summary>
+        <ol><li>Keep TrueStretch running (tray icon) and start VALORANT with <b>Play stretched</b>.</li>
+          <li>The stretch switches on after the map loads — menus stay normal on purpose.</li>
+          <li>Still not working? <b>Settings → Support file</b>, then <a href="https://github.com/candyqueenjr/TrueStretch/issues/new?template=bug_report.yml">open a bug report</a> and attach it.</li></ol></details>
+      <details><summary>Does it collect data?</summary>
+        <p>No. The only network request is an anonymous check for updates on GitHub, which you can turn off in Settings.</p></details>
+      <details><summary>How do I undo everything?</summary>
+        <p>VALORANT page → <b>Restore normal</b> puts your original settings back; <b>My PC</b> can turn the monitor drivers back on.</p></details>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="final reveal">
+      <h2>Ready to stretch?</h2>
+      <p class="sub" style="margin:0 auto 28px">Free, one file, set up in a minute.</p>
+      <a class="btn btn-primary dl" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
+        Download TrueStretch</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a class="brand" href="#"><img src="assets/logo.png" alt="">TrueStretch</a>
+      <div class="links">
+        <a href="https://github.com/candyqueenjr/TrueStretch/releases">Releases</a>
+        <a href="https://github.com/candyqueenjr/TrueStretch/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/candyqueenjr/TrueStretch/issues/new/choose">Report a problem</a>
+        <a href="https://github.com/candyqueenjr/TrueStretch/discussions">Discussions</a>
+        <a href="https://github.com/candyqueenjr/TrueStretch/blob/main/SECURITY.md">Security</a>
+      </div>
+    </div>
+    <p>TrueStretch isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, VALORANT, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</p>
+  </div>
+</footer>
+
+<script>
+  const nav = document.getElementById("nav");
+  addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
+
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+  // Live version, size and download count from GitHub (falls back silently).
+  fetch("https://api.github.com/repos/candyqueenjr/TrueStretch/releases")
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(releases => {
+      if (!releases.length) return;
+      const latest = releases.find(r => !r.prerelease && !r.draft) || releases[0];
+      const exe = latest.assets.find(a => a.name === "TrueStretch.exe");
+      document.getElementById("ver").textContent = `Version ${latest.tag_name.replace(/^v/, "")} · Free · Windows 10 & 11`;
+      if (exe) document.getElementById("size").textContent = `${(exe.size / 1048576).toFixed(0)} MB`;
+      const total = releases.reduce((n, r) => n + r.assets.filter(a => a.name === "TrueStretch.exe").reduce((m, a) => m + a.download_count, 0), 0);
+      if (total >= 10) document.getElementById("dls").textContent = `${total.toLocaleString()} downloads`;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

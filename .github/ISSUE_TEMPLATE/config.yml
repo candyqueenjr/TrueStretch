@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & help
+    url: https://github.com/candyqueenjr/TrueStretch/discussions/categories/q-a
+    about: Not sure if it's a bug? Ask here first.
+  - name: 🔒 Security problem
+    url: https://github.com/candyqueenjr/TrueStretch/security/advisories/new
+    about: Please report security issues privately.

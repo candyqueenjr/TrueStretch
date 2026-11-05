@@ -1,0 +1,90 @@
+name: 🐞 Bug report
+description: Something isn't working — not stretched, black bars, an error, a crash.
+title: "[Bug] "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! The fastest way to get this fixed: in TrueStretch open
+        **Settings → Support file → Create**, then drag the zip from your Desktop into the box below.
+        (It contains TrueStretch's logs and display info — no passwords or account details.)
+
+  - type: dropdown
+    id: problem
+    attributes:
+      label: What's wrong?
+      options:
+        - Not stretched in a match
+        - Black bars at the sides
+        - Screen stuck at the wrong resolution
+        - Error message in TrueStretch
+        - TrueStretch crashes / won't open
+        - Update didn't work
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see instead?
+      placeholder: |
+        1. Pressed Play stretched
+        2. Went into the Range
+        3. Still not stretched
+    validations:
+      required: true
+
+  - type: textarea
+    id: support-file
+    attributes:
+      label: Support file
+      description: Settings → Support file → Create, then drag the zip here.
+      placeholder: Drag TrueStretch-support-….zip here
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: TrueStretch version
+      description: Shown under the logo, top left.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: gpu
+    attributes:
+      label: Graphics card
+      options:
+        - NVIDIA
+        - AMD
+        - Intel
+        - Laptop with two graphics chips
+        - Don't know
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stretch
+    attributes:
+      label: Stretch level
+      options:
+        - Light
+        - Classic 4:3
+        - Strong
+        - Extreme
+        - Custom
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshots
+      description: A screenshot of the problem (or of TrueStretch's VALORANT page) helps a lot.
+    validations:
+      required: false

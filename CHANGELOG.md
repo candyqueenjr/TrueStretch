@@ -2,6 +2,19 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] — 2026-11-06
+
+### Fixed
+- **TrueStretch didn't open on some PCs (nothing happened when you clicked it).** Microsoft Defender's
+  machine-learning check flagged 1.1.0 as `Program:Win32/Contebrew.A!ml` — a false positive. The single .exe used to
+  unpack its program into the Temp folder on every start, and launching programs from Temp is what Defender's model
+  treats as suspicious. TrueStretch now unpacks once into its own folder (`%LOCALAPPDATA%\TrueStretch\<version>`),
+  which Defender accepts — and it starts faster, because it reuses that folder.
+- Old versions' folders are cleaned up automatically after an update.
+
+> If 1.1.0 is blocked on your PC, it can't update itself — download 1.1.1 again from the
+> [release page](https://github.com/candyqueenjr/TrueStretch/releases/latest). Your settings are kept.
+
 ## [1.1.0] — 2026-11-05
 
 ### Optimize Max (new)

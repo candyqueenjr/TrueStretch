@@ -2,6 +2,34 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-11-09
+
+### Optimize Max
+- **Keyboard shortcut pop-ups.** Three new Windows checks: the Sticky Keys shortcut (press Shift 5 times), the
+  Filter Keys shortcut (hold the right Shift key for 8 seconds) and the Toggle Keys shortcut (hold Num Lock for
+  5 seconds). Windows turns these on by default; all three are things you do while walking, crouching or holding an
+  angle, and the pop-up appears over VALORANT and steals focus — Filter Keys also makes Windows ignore quick key
+  presses. Apply turns off **only the shortcut**, never the feature: Sticky, Filter and Toggle Keys stay available in
+  Windows Settings > Accessibility > Keyboard. If you actually use one of them (it is switched on), TrueStretch leaves
+  it alone and shows it as information.
+- The change is applied live and kept for the next sign-in; Undo restores the exact original Windows setting and
+  registry copy.
+- **Inside VALORANT now shows your real settings.** The 14 settings that live in your Riot account (NVIDIA Reflex,
+  Multithreaded Rendering, Material/Texture/Detail/UI quality, Anti-Aliasing, Anisotropic Filtering, Bloom,
+  Distortion, Cast Shadows, the FPS limit) are read from VALORANT's own settings file for the account you played
+  last, instead of a blank "Set in game". Each one is marked **Optimized** or **Manual** with the value it has now,
+  the value to pick and the exact menu — for example "Multithreaded Rendering: Off → On" or "60 FPS cap (screen:
+  144 Hz)". TrueStretch only reads these; only the game can change them. Settings you never touched show as
+  "Game default".
+
+### Fixed
+- **Your other per-app graphics choices are kept.** Windows stores several settings for one program in the same
+  place — the graphics card to use, Auto HDR, and its own bookkeeping. When TrueStretch set VALORANT to the
+  high-performance graphics card (the game page toggle or the Optimize Max check), it replaced that whole entry
+  and could drop your Auto HDR choice for VALORANT. It now changes only the graphics-card part and leaves the rest
+  exactly as Windows wrote it. The Optimize Max row also says "Power saving" instead of "Let Windows decide" when
+  VALORANT is pinned to the slow graphics chip.
+
 ## [1.1.1] — 2026-11-06
 
 ### Fixed

@@ -11,6 +11,7 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:   # test build: tests + build + unsigned artifact only, nothing is signed or published
 
 permissions:
   contents: write   # create the GitHub release
@@ -37,11 +38,13 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart("v")
           $src = [regex]::Match((Get-Content truestretch/__init__.py -Raw), 'VERSION = "(\d+\.\d+\.\d+)"').Groups[1].Value
-          if ($tag -ne $src) { throw "Tag v$tag doesn't match VERSION = `"$src`" in truestretch/__init__.py" }
-          if (-not (Test-Path "release-notes/$tag.md")) { throw "release-notes/$tag.md is missing" }
-          "version=$tag" >> $env:GITHUB_OUTPUT
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}".TrimStart("v")
+            if ($tag -ne $src) { throw "Tag v$tag doesn't match VERSION = `"$src`" in truestretch/__init__.py" }
+            if (-not (Test-Path "release-notes/$tag.md")) { throw "release-notes/$tag.md is missing" }
+          }
+          "version=$src" >> $env:GITHUB_OUTPUT
 
       - name: Tests
         shell: pwsh
@@ -62,7 +65,7 @@ jobs:
           if-no-files-found: error
 
       - name: Code signing (SignPath) — waits for the approver to approve the request
-        if: env.HAS_SIGNPATH == 'true'
+        if: github.event_name == 'push' && env.HAS_SIGNPATH == 'true'
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -75,6 +78,7 @@ jobs:
           output-artifact-directory: signed
 
       - name: Pick the release file and check its signature
+        if: github.event_name == 'push'
         id: pick
         shell: pwsh
         run: |
@@ -100,6 +104,7 @@ jobs:
           Write-Host "SHA-256: $sha"
 
       - name: Publish the GitHub release
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

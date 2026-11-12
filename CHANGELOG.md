@@ -2,6 +2,17 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-11-12
+
+### Optimize Max
+- **Your last match.** VALORANT writes its own performance statistics into its log at the end of every round
+  (frames drawn, round length, how long the graphics card worked on each frame). TrueStretch now reads the rounds of
+  your last match and shows one row under Your PC: your real average FPS, and what limits it — the graphics card
+  (lower graphics quality or a stretched resolution helps most), the processor (graphics settings add little; the
+  Windows, startup and background checks matter most), or your in-game FPS limit. It also points out stutters (more
+  than 1% of frames slower than 60 FPS), memory over 90% full during the match, and shader stutters. Read-only, and
+  hidden until you have played a match.
+
 ## [1.3.0] — 2026-11-12
 
 ### Optimize Max

@@ -2,6 +2,17 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-11-12
+
+### Optimize Max
+- **Graphics chip VALORANT used.** On laptops with two graphics chips (the built-in Intel/AMD one and the NVIDIA/AMD
+  gaming card), Windows decides which one runs the game, and the built-in chip costs a lot of FPS. VALORANT records
+  the chip it used in its own log at every start; TrueStretch now reads that record and shows it under Windows, so
+  you can see that the game really runs on the gaming card. If it ran on the built-in chip, the row says so and
+  points to "VALORANT on the fast graphics card", which fixes it from the next start. If the game ran with no
+  graphics driver at all (Windows' basic display driver), the row warns about that too. Read-only, and hidden on PCs
+  with a single graphics card.
+
 ## [1.2.0] — 2026-11-09
 
 ### Optimize Max

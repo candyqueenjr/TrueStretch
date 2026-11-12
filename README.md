@@ -95,6 +95,16 @@ anyway</b>. You can check the file is genuine: each release lists its SHA-256 ch
 </details>
 
 <details>
+<summary><b>"Smart App Control blocked an app that may be unsafe" — what now?</b></summary>
+<br>
+Smart App Control (Windows 11) blocks every program that isn't code-signed or widely known yet, and it has no
+<i>Run anyway</i> button. TrueStretch is getting free code signing for open-source projects through
+<a href="#code-signing-policy">SignPath Foundation</a>; signed releases pass Smart App Control. Until then, a PC with
+Smart App Control turned on can't start TrueStretch. We don't recommend turning a Windows security feature off for
+it — wait for the signed release (it updates itself on PCs where it already runs).
+</details>
+
+<details>
 <summary><b>Is it safe for my account?</b></summary>
 <br>
 TrueStretch only changes your Windows display resolution, graphics-driver settings and VALORANT's own settings file —
@@ -141,7 +151,30 @@ every optimization. <b>My PC → Monitor drivers → Turn back on</b> re-enables
 <summary><b>Does it collect any data?</b></summary>
 <br>
 No. The only network request is an anonymous check for a newer version on GitHub (can be turned off in Settings).
+See <a href="PRIVACY.md">PRIVACY.md</a>.
 </details>
+
+## Open source
+
+TrueStretch is open source under the [GNU GPL v3](LICENSE). Every release is built from this repository's source by
+[GitHub Actions](.github/workflows/release.yml), so anyone can check exactly what they download. To run it from
+source or contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). Third-party components: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [candyqueenjr](https://github.com/candyqueenjr)
+- Approvers: [candyqueenjr](https://github.com/candyqueenjr)
+
+Only `TrueStretch.exe` built by this repository's [release workflow](.github/workflows/release.yml) from a tagged
+version is signed, and an approver confirms every signing request by hand. Changes from anyone else are reviewed
+before they are merged.
+
+**Privacy:** this program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it, apart from an anonymous check for new versions on
+GitHub, which can be turned off. See [PRIVACY.md](PRIVACY.md).
 
 ## Support
 
@@ -151,7 +184,9 @@ No. The only network request is an anonymous check for a newer version on GitHub
 
 ---
 
-<sub>TrueStretch is free software provided as-is — see [LICENSE](LICENSE). Fonts: Barlow (SIL Open Font License).
+<sub>TrueStretch is free, open-source software under the GNU GPL v3, provided as-is — see [LICENSE](LICENSE). The name
+TrueStretch and its logo identify the official version; modified versions must use a different name. Fonts: Barlow
+(SIL Open Font License).
 TrueStretch isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially
 involved in producing or managing Riot Games properties. Riot Games, VALORANT, and all associated properties are
 trademarks or registered trademarks of Riot Games, Inc.</sub>

@@ -31,7 +31,8 @@ automatically before installing any update.
 
 ## “Windows protected your PC” / antivirus warnings
 
-TrueStretch is free and isn't code-signed, so Windows SmartScreen may warn the first time you run it, and some
+TrueStretch is free and open source. Releases aren't code-signed yet (signing through SignPath Foundation is being set
+up — see the [code signing policy](README.md#code-signing-policy)), so Windows SmartScreen may warn the first time you run it, and some
 antivirus programs flag new unsigned programs by default. If your antivirus flags the official file (with a matching
 checksum), please report it as a false positive to your antivirus vendor — and let us know in an issue.
 

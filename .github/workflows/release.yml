@@ -1,0 +1,108 @@
+# Builds TrueStretch.exe from this repository's source on a GitHub-hosted Windows runner, has it code-signed by
+# SignPath (free for open source; certificate by SignPath Foundation) and publishes the GitHub release.
+#
+# Start it by pushing a version tag:   git tag v1.5.0 && git push origin v1.5.0
+# The tag must match VERSION in truestretch/__init__.py, and release-notes/<version>.md must exist.
+#
+# Until SignPath is set up (repository secret SIGNPATH_API_TOKEN + variable SIGNPATH_ORGANIZATION_ID), the release
+# is published unsigned, exactly like the releases built by hand before.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write   # create the GitHub release
+  actions: read     # SignPath reads the unsigned build artifact
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest     # GitHub-hosted runner (required by SignPath's open-source program)
+    timeout-minutes: 300
+    env:
+      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.10"
+
+      - name: Check the tag matches the version in the source
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $src = [regex]::Match((Get-Content truestretch/__init__.py -Raw), 'VERSION = "(\d+\.\d+\.\d+)"').Groups[1].Value
+          if ($tag -ne $src) { throw "Tag v$tag doesn't match VERSION = `"$src`" in truestretch/__init__.py" }
+          if (-not (Test-Path "release-notes/$tag.md")) { throw "release-notes/$tag.md is missing" }
+          "version=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          python -m pip install --quiet -r requirements.txt
+          python tests/run_all.py --ci
+
+      - name: Build (Nuitka, same flags as local builds)
+        shell: pwsh
+        run: ./build.ps1 -Protected
+
+      - name: Upload unsigned build
+        id: unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: TrueStretch-unsigned
+          path: dist/TrueStretch.exe
+          if-no-files-found: error
+
+      - name: Code signing (SignPath) — waits for the approver to approve the request
+        if: env.HAS_SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'TrueStretch' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 14400
+          output-artifact-directory: signed
+
+      - name: Pick the release file and check its signature
+        id: pick
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          if ($env:HAS_SIGNPATH -eq 'true') {
+            $exe = Get-ChildItem signed -Recurse -Filter TrueStretch.exe | Select-Object -First 1
+            if (-not $exe) { throw "SignPath returned no TrueStretch.exe" }
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            if ($sig.Status -ne 'Valid') { throw "Signature is not valid: $($sig.Status) $($sig.StatusMessage)" }
+            Write-Host "Signed by: $($sig.SignerCertificate.Subject)"
+            Copy-Item $exe.FullName out/TrueStretch.exe
+          } else {
+            Write-Host "::warning::SignPath isn't set up yet - publishing an unsigned build."
+            Copy-Item dist/TrueStretch.exe out/TrueStretch.exe
+          }
+          $sha = (Get-FileHash out/TrueStretch.exe -Algorithm SHA256).Hash
+          "$sha  TrueStretch.exe" | Set-Content out/TrueStretch.exe.sha256 -Encoding ascii
+          $notes = (Get-Content "release-notes/${{ steps.version.outputs.version }}.md" -Raw -Encoding utf8).Replace("{SHA}", $sha)
+          Set-Content out/notes.md $notes -Encoding utf8
+          $title = ([regex]::Match($notes, '(?m)^##\s*(.+)$').Groups[1].Value).Trim()
+          if (-not $title) { $title = "TrueStretch ${{ steps.version.outputs.version }}" }
+          "title=$title" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA-256: $sha"
+
+      - name: Publish the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" out/TrueStretch.exe out/TrueStretch.exe.sha256 `
+            --title "${{ steps.pick.outputs.title }}" --notes-file out/notes.md --latest --verify-tag

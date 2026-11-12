@@ -1,0 +1,28 @@
+# Runs the read-only tests (no VALORANT, screen or driver needed) on every push and pull request.
+# The full suite (display switching, Optimize Max apply/undo, compiled-exe gates) runs on a real gaming PC before
+# each release - see CONTRIBUTING.md.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.10"
+      - name: Install
+        run: python -m pip install --quiet -r requirements.txt
+      - name: Compile check
+        run: python -m compileall -q main.py truestretch tests tools
+      - name: Tests
+        run: python tests/run_all.py --ci

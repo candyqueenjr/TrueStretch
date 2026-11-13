@@ -60,8 +60,10 @@ def main():
     tests = subprocess.run([sys.executable, str(ROOT / "tests" / "run_all.py"), "--build"])
     if tests.returncode != 0:
         fail("tests failed - nothing was tagged")
-    if git("tag", "-a", tag, "-m", f"TrueStretch {version}").returncode != 0:
-        fail("couldn't create the tag")
+    made = git("-c", "user.name=candyqueenjr", "-c", "user.email=candyqueenjr@users.noreply.github.com",
+               "tag", "-a", tag, "-m", f"TrueStretch {version}")      # an annotated tag needs an identity
+    if made.returncode != 0:
+        fail("couldn't create the tag: " + made.stderr.strip())
     push = git("push", "origin", tag)
     if push.returncode != 0:
         git("tag", "-d", tag)

@@ -2,6 +2,16 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] — 2026-11-13
+
+### Optimize Max
+- **Page file.** The page file is extra room on your drive that Windows uses when memory is full. Some "FPS boost"
+  guides and tweak tools switch it off; that adds no FPS, and when memory runs out the game freezes or closes in the
+  middle of a match. A new check under Windows shows whether your page file is on. If it is switched off, Apply lets
+  Windows manage it again — the factory setting — with one administrator prompt and a restart. A page file that is
+  on (managed by Windows, or with a size you picked) is shown as fine and never changed. Undo puts back exactly what
+  was there before, and the row tells you when a change is still waiting for a restart.
+
 ## [1.4.0] — 2026-11-12
 
 ### Optimize Max

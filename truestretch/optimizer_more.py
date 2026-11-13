@@ -11,7 +11,7 @@ import subprocess
 import winreg
 from pathlib import Path
 
-from . import accesskeys
+from . import accesskeys, pagefile
 from .optimizer import (DONE, GAME_EXE, HKCU, HKLM, IMPROVE, IN_GAME, INFO, NO_WINDOW, OPTIONAL, UNAVAILABLE, Item,
                         _dbg, _reg, _reg_dword, _reg_restore, _reg_snapshot)
 from .system import running_processes
@@ -97,6 +97,36 @@ def transparency_item():
                 OPTIONAL if on else DONE, "Less background work", 1, debug=[_dbg(HKCU, key, name, raw)],
                 _apply=lambda: _reg_dword(HKCU, key, name, 0), _snapshot=lambda: _reg_snapshot(HKCU, key, name),
                 _restore=lambda d: _reg_restore(HKCU, key, d))
+
+
+def page_file_item(pc=None, entries=..., live_mb=...):
+    """The Windows page file. Only "switched off" is something to fix; a custom size is the player's choice."""
+    entries = pagefile.read() if entries is ... else entries
+    live_mb = pagefile.live_mb() if live_mb is ... else live_mb
+    state = pagefile.status(entries)
+    if state is None:                                # missing or not understood: say nothing rather than guess
+        return None
+    ram = getattr(pc, "ram_gb", 0) or 0
+    title = "Page file (extra room when memory is full)"
+    why = ("When memory fills up, Windows moves what isn't in use to the page file. Without one, VALORANT or "
+           "Windows can freeze or close the moment memory runs out. It adds no FPS when switched off.")
+    debug = [f"HKLM\\{pagefile.KEY} → {pagefile.VALUE} = {entries!r}",
+             f"page file in use now: {live_mb if live_mb is not None else '?'} MB (commit limit − physical memory)"]
+    level = 2 if ram and ram <= 16 else 1
+    if state == pagefile.OFF:
+        now = "Off" if not live_mb else "Off from the next restart"
+        return Item("page_file", "Windows", title, why, now, "Managed by Windows", IMPROVE, "Fewer crashes", level,
+                    note="Needs administrator permission and a restart.", admin=True, restart=True, debug=debug,
+                    _admin_cmds=pagefile.apply_cmds(), _snapshot=lambda: entries,
+                    _admin_undo=lambda d: pagefile.undo_cmds(d))
+    if state == pagefile.CUSTOM:
+        now = f"Custom size (up to {pagefile.custom_max_mb(entries) / 1024:.0f} GB)"
+    else:
+        now = "Managed by Windows"
+    if live_mb == 0:                                 # configured, but Windows hasn't restarted since
+        now += " — from the next restart"
+    return Item("page_file", "Windows", title, why, now, "On", DONE, "Fewer crashes", level, debug=debug,
+                _snapshot=lambda: entries, _admin_undo=lambda d: pagefile.undo_cmds(d))
 
 
 # ---- Windows accessibility keyboard shortcuts (the prompts that pop over the game) ---------------------------------
@@ -451,7 +481,7 @@ def panel_items(vendor):
             for i, (name, want, why, level) in enumerate(rows)]
 
 
-__all__ = ["power_items", "transparency_item", "accessibility_hotkey_items", "pending_restart_item", "startup_items",
+__all__ = ["power_items", "transparency_item", "accessibility_hotkey_items", "pending_restart_item", "page_file_item", "startup_items",
            "overlay_items",
            "memory_hog_items", "memory_items", "storage_item", "network_item", "nvidia_extra_specs", "MORE_VALORANT",
            "panel_items", "GAME_EXE", "UNAVAILABLE", "IN_GAME", "INFO", "OPTIONAL"]

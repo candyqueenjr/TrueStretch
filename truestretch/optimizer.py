@@ -706,6 +706,7 @@ class Optimizer:
             ("Graphics chip VALORANT used", lambda: _render_gpu(e)),
             ("Screen refresh rate", lambda: _refresh(e)),
             ("Transparency effects", more.transparency_item),
+            ("Page file", lambda: more.page_file_item(pc)),
             ("Pending Windows restart", more.pending_restart_item),
             ("Mouse acceleration", _pointer),
             ("Keyboard shortcut pop-ups (Sticky, Filter, Toggle Keys)", more.accessibility_hotkey_items),

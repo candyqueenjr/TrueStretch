@@ -11,6 +11,9 @@ Then it tags v<version> and pushes it. The release workflow (.github/workflows/r
 from the tagged source on a GitHub-hosted runner with the same flags, sends it to SignPath for code signing (approve
 the request in SignPath) and publishes the GitHub release with its SHA-256 checksum. Commits are made as
 candyqueenjr, with no AI attribution.
+
+Afterwards run tools/verify_release.py <version>: it downloads the published exe and runs the same Defender launch
+gate on it (the gates here only test the local build).
 """
 import subprocess
 import sys
@@ -70,6 +73,8 @@ def main():
         fail("couldn't push the tag: " + push.stderr.strip())
     print(f"TAGGED {tag} - GitHub Actions is building, signing and publishing it:")
     print(f"  https://github.com/{REPO}/actions/workflows/release.yml")
+    print("When it has finished, check the exe players really get (and hold it back if it's bad):")
+    print(f"  python tools/verify_release.py {version}")
 
 
 if __name__ == "__main__":

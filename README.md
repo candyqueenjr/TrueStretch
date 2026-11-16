@@ -42,7 +42,8 @@ undone.
 
 1. **[Download TrueStretch.exe](https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe)** — one file, nothing to install.
 2. Double-click it. Windows may show **"Windows protected your PC"** the first time → **More info → Run anyway**
-   ([why?](#faq)).
+   ([why?](#faq)). If it says **"Smart App Control blocked"** instead, use the
+   [one-command install](#faq) (it works on those PCs).
 3. The welcome tour scans your PC. Pick a stretch level.
 4. Press **Play stretched**. Windows asks once for permission to turn the monitor drivers off — click **Yes**.
 5. Load into the Range or a match.
@@ -100,10 +101,15 @@ anyway</b>. You can check the file is genuine: each release lists its SHA-256 ch
 <summary><b>"Smart App Control blocked an app that may be unsafe" — what now?</b></summary>
 <br>
 Smart App Control (Windows 11) blocks every program that isn't code-signed or widely known yet, and it has no
-<i>Run anyway</i> button. TrueStretch is getting free code signing for open-source projects through
-<a href="#code-signing-policy">SignPath Foundation</a>; signed releases pass Smart App Control. Until then, a PC with
-Smart App Control turned on can't start TrueStretch. We don't recommend turning a Windows security feature off for
-it — wait for the signed release (it updates itself on PCs where it already runs).
+<i>Run anyway</i> button. TrueStretch.exe isn't code-signed yet, so use the <b>one-command install</b> instead: it runs
+TrueStretch from its open-source code with the official Python and Qt, which are signed by their makers, so Smart
+App Control allows them. Open <b>PowerShell</b> (Start menu → type <i>PowerShell</i> → Enter) and paste:
+<pre>irm https://candyqueenjr.github.io/TrueStretch/install.ps1 | iex</pre>
+It installs Python for your Windows user if needed, puts TrueStretch on your Desktop and in the Start menu, starts
+it, and updates itself like the normal version. It changes no Windows security setting. You can
+<a href="docs/install.ps1">read exactly what it does</a> first. To remove it, delete the
+<code>%LOCALAPPDATA%\TrueStretch-src</code> folder and the two TrueStretch shortcuts. Don't turn Smart App Control off
+for TrueStretch.
 </details>
 
 <details>

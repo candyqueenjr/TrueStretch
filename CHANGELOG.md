@@ -2,6 +2,22 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] — 2026-11-16
+
+### Works on PCs with Smart App Control
+- **Install without TrueStretch.exe.** Windows 11's *Smart App Control* blocks every program that isn't code-signed,
+  with no "Run anyway" button, so TrueStretch.exe couldn't start on those PCs. There is now a one-command install
+  that runs TrueStretch from its open-source code with the official Python (signed by the Python Software
+  Foundation) and Qt (signed by The Qt Company), which Smart App Control allows. Open PowerShell and paste
+  `irm https://candyqueenjr.github.io/TrueStretch/install.ps1 | iex`. It installs Python for your user if needed,
+  puts TrueStretch on the Desktop and in the Start menu, and starts it. It changes no Windows security setting.
+- **That install updates itself too.** When a new version is out, *Update and restart* downloads the new source,
+  checks it is the right version, and swaps it in on restart. Settings stay.
+
+### App
+- **Star on GitHub.** Settings › Help and About have a *Star on GitHub* button: TrueStretch is free and open source,
+  and stars help other players find it.
+
 ## [1.5.0] — 2026-11-13
 
 ### Optimize Max

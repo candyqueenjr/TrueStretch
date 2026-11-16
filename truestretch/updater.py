@@ -90,18 +90,37 @@ def installed_exe():
     return exe if exe.suffix.lower() == ".exe" and exe.is_file() else None
 
 
+SOURCE_MARKER = "install.json"
+SOURCE_ZIP = os.environ.get("TRUESTRETCH_SOURCE_ZIP_URL") or f"https://github.com/{REPO}/archive/refs/tags/{{tag}}.zip"
+
+
+def source_root():
+    """%LOCALAPPDATA%\\TrueStretch-src when running from the one-command install (install.ps1), else None.
+    A developer's checkout never qualifies: it needs app\\ + install.json + launcher.pyw around it."""
+    if is_frozen():
+        return None
+    app = Path(__file__).resolve().parent.parent
+    root = app.parent
+    if app.name == "app" and (root / SOURCE_MARKER).is_file() and (root / "launcher.pyw").is_file():
+        return root
+    return None
+
+
+def can_install():
+    return installed_exe() is not None or source_root() is not None
+
+
 def old_copy(exe):
     return exe.with_name(f"{exe.stem}.old{exe.suffix}")
 
 
-def download(release, dest, progress=None):
-    """Downloads to `dest` and checks the SHA-256. progress(done_bytes, total_bytes) is called as it goes."""
+def _fetch(url, tmp, progress=None, size=0):
+    """Downloads `url` to `tmp`; returns the SHA-256 (hex). progress(done_bytes, total_bytes) is called as it goes."""
     h = hashlib.sha256()
     done = 0
-    tmp = dest.with_name(dest.name + ".part")
     try:
-        with _get(release.download, "application/octet-stream") as resp, open(tmp, "wb") as f:
-            total = int(resp.headers.get("Content-Length") or release.size or 0)
+        with _get(url, "application/octet-stream") as resp, open(tmp, "wb") as f:
+            total = int(resp.headers.get("Content-Length") or size or 0)
             while True:
                 chunk = resp.read(256 * 1024)
                 if not chunk:
@@ -114,18 +133,63 @@ def download(release, dest, progress=None):
     except Exception as exc:
         tmp.unlink(missing_ok=True)
         raise UpdateError(f"Download failed ({exc}).") from exc
-    if h.hexdigest() != release.sha256:
+    return h.hexdigest()
+
+
+def download(release, dest, progress=None):
+    """Downloads to `dest` and checks the SHA-256. progress(done_bytes, total_bytes) is called as it goes."""
+    tmp = dest.with_name(dest.name + ".part")
+    if _fetch(release.download, tmp, progress, release.size) != release.sha256:
         tmp.unlink(missing_ok=True)
         raise UpdateError("The download didn't match its checksum, so it wasn't installed. Try again later.")
     os.replace(tmp, dest)
     return dest
 
 
+def install_source(release, progress=None, root=None):
+    """One-command install: download the release's source, check it, and leave it in app.new. launcher.pyw puts it
+    in place of app\\ at the next start (files of the running version can't be swapped while they're in use).
+    Returns the launcher to restart into."""
+    import shutil
+    import zipfile
+    root = root or source_root()
+    if root is None:
+        raise UpdateError("This copy of TrueStretch can't update itself.")
+    zpath = root / "update.zip"
+    staging = root / "app.staging"
+    new = root / "app.new"
+    _fetch(SOURCE_ZIP.format(tag=release.tag), zpath, progress)
+    try:
+        shutil.rmtree(staging, ignore_errors=True)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(staging)
+        tops = [p for p in staging.iterdir() if p.is_dir()]
+        if len(tops) != 1 or not (tops[0] / "main.py").is_file():
+            raise UpdateError("The downloaded source doesn't look like TrueStretch.")
+        init = (tops[0] / "truestretch" / "__init__.py").read_text(encoding="utf-8")
+        m = re.search(r'VERSION = "([^"]+)"', init)
+        if not m or parse_version(m.group(1)) != parse_version(release.version):
+            raise UpdateError(f"The downloaded source is version {m.group(1) if m else '?'}, "
+                              f"not {release.version}.")
+        shutil.rmtree(new, ignore_errors=True)
+        os.replace(tops[0], new)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise UpdateError(f"Couldn't unpack the update ({exc}).") from exc
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        zpath.unlink(missing_ok=True)
+    log.info("Update %s staged in %s", release.version, new)
+    return root / "launcher.pyw"
+
+
 def install(release, progress=None):
     """Download, verify and put the new .exe in place of this one. Returns the path to start. The running .exe is
-    renamed (Windows allows that) and deleted on the next start."""
+    renamed (Windows allows that) and deleted on the next start. A one-command (source) install stages the new
+    source instead and returns its launcher."""
     exe = installed_exe()
     if exe is None:
+        if source_root() is not None:
+            return install_source(release, progress)
         raise UpdateError("Updates install only into the packaged TrueStretch.exe.")
     new = exe.with_name(f"{exe.stem}.new{exe.suffix}")
     try:
@@ -154,7 +218,11 @@ def install(release, progress=None):
 def restart_into(exe):
     """Start the new version; it waits for this process to quit before it takes over."""
     flags = 0x00000008 | 0x00000200          # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen([str(exe), "--wait-pid", str(os.getpid()), "--updated"], creationflags=flags,
+    cmd = [str(exe)]
+    if Path(exe).suffix.lower() == ".pyw":   # source install: the launcher swaps in the update, then starts it
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        cmd = [str(pythonw if pythonw.exists() else sys.executable), str(exe)]
+    subprocess.Popen([*cmd, "--wait-pid", str(os.getpid()), "--updated"], creationflags=flags,
                      close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -162,6 +230,11 @@ def cleanup_after_update():
     """Delete the previous version left behind by an update (it may still be in use for a few seconds)."""
     exe = installed_exe()
     if not exe:
+        root = source_root()
+        if root:
+            import shutil
+            shutil.rmtree(root / "app.old", ignore_errors=True)
+            (root / "update.zip").unlink(missing_ok=True)
         return
     for leftover in (old_copy(exe), exe.with_name(f"{exe.stem}.new{exe.suffix}"),
                      exe.with_name(f"{exe.stem}.new{exe.suffix}.part")):

@@ -112,7 +112,7 @@ class UpdateDialog(QDialog):
         self._finished.connect(self._on_finished)
 
     def _start(self):
-        if updater.installed_exe() is None:       # running from source: just show the release
+        if not updater.can_install():             # a developer's checkout: just show the release
             QDesktopServices.openUrl(QUrl(self.release.url))
             self.accept()
             return

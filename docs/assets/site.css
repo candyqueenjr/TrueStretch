@@ -462,6 +462,9 @@ kbd { display: inline-block; font: 600 14px/1.3 var(--disp); letter-spacing: .06
 .final-title { font-size: clamp(60px, 16vw, 200px); margin: 20px 0 24px; }
 .final .sub { margin: 0 auto clamp(32px, 4vw, 48px); }
 .final .btn + .btn { margin-left: 12px; }
+.a code.cmd { display: block; padding: 12px 14px; background: rgba(0, 0, 0, .35); border: 1px solid var(--line, #2a3742);
+  font: 500 14px/1.5 ui-monospace, Consolas, monospace; color: var(--cream, #ece8e1); overflow-wrap: anywhere;
+  user-select: all; }
 .final .star-note { margin: 20px auto 0; color: var(--muted, #8b978f); font-size: 14px; letter-spacing: .02em; }
 @media (max-width: 560px) {
   .final .btn { width: 100%; }

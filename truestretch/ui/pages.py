@@ -298,6 +298,8 @@ class SettingsPage(Page):
                            button("Create", "lifebuoy", None, self._support_file), "lifebuoy")
         help_group.add_row("Report a problem", "Opens the bug report form on GitHub.",
                            button("Open", "external", None, self._report), "external")
+        help_group.add_row("Like TrueStretch?", "It's free and open source. A star on GitHub helps other players "
+                           "find it.", button("Star on GitHub", "star", None, open_github), "star")
         self.content.addWidget(help_group)
 
         data = SettingsGroup("Data")
@@ -422,8 +424,24 @@ class AboutPage(Page):
         self.content.addWidget(how)
         self.content.addWidget(Card().add(hbox(_icon_label("shield", "warning"), label("Fair play", "H2"), None),
                                           label(FAIR_PLAY, "Muted", wrap=True)))
+        self.content.addWidget(Card().add(
+            hbox(_icon_label("star", "accent"), label("Open source", "H2"), None),
+            label(OPEN_SOURCE, "Muted", wrap=True),
+            hbox(button("Star on GitHub", "star", "Primary", open_github), None)))
         self.content.addWidget(Card().add(label("Legal", "H2"), label(RIOT_LEGAL, "Faint", wrap=True)))
         self.finish()
+
+
+OPEN_SOURCE = ("TrueStretch is free and open source (GNU GPL v3): anyone can read exactly what it does, and every "
+               "release is built from that code on GitHub. If it helps you, a star on GitHub helps other players "
+               "find it.")
+
+
+def open_github():
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+    from ..updater import REPO
+    QDesktopServices.openUrl(QUrl(f"https://github.com/{REPO}"))
 
 
 def _icon_label(name, color_key):

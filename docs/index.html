@@ -7,9 +7,53 @@
 <meta name="description" content="Free Windows app: true stretched resolution for VALORANT in one click, plus Optimize Max for every FPS and input-delay setting on your PC. NVIDIA, AMD and Intel.">
 <meta property="og:title" content="TrueStretch — True stretched resolution for VALORANT">
 <meta property="og:description" content="One click, fully automatic, free. Plus Optimize Max.">
+<link rel="canonical" href="https://candyqueenjr.github.io/TrueStretch/">
+<meta property="og:url" content="https://candyqueenjr.github.io/TrueStretch/">
+<meta property="og:site_name" content="TrueStretch">
 <meta property="og:image" content="https://candyqueenjr.github.io/TrueStretch/assets/banner.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="TrueStretch — true stretched resolution for VALORANT">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TrueStretch — True stretched resolution for VALORANT">
+<meta name="twitter:description" content="One click, fully automatic, free and open source. Plus Optimize Max.">
+<meta name="twitter:image" content="https://candyqueenjr.github.io/TrueStretch/assets/banner.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "TrueStretch",
+      "url": "https://candyqueenjr.github.io/TrueStretch/",
+      "downloadUrl": "https://github.com/candyqueenjr/TrueStretch/releases/latest",
+      "applicationCategory": "UtilitiesApplication",
+      "applicationSubCategory": "Game utility",
+      "operatingSystem": "Windows 10, Windows 11",
+      "description": "Free, open-source Windows app that sets up true stretched resolution for VALORANT in one click on NVIDIA, AMD and Intel, plus Optimize Max: every Windows, driver and game setting that affects FPS and input delay, explained and undoable.",
+      "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "image": "https://candyqueenjr.github.io/TrueStretch/assets/banner.png",
+      "sameAs": ["https://github.com/candyqueenjr/TrueStretch"]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Is it safe for my account?",
+          "acceptedAnswer": { "@type": "Answer", "text": "TrueStretch only changes your Windows resolution, graphics-driver settings and VALORANT's own settings file — the same things you could change by hand. It never reads or modifies game memory and never interacts with Vanguard. Riot doesn't officially support true stretched resolution and we can't speak for Riot, so use it at your own risk." } },
+        { "@type": "Question", "name": "Does it work on AMD, Intel and laptops?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. It adds the resolution through your graphics driver, and if a driver refuses, it automatically uses the closest stretched resolution your screen already has." } },
+        { "@type": "Question", "name": "Will Optimize Max change things without asking?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. It only lists what it found. You choose what to apply, each change is verified afterwards, and Undo puts back the exact original value. It never touches security settings." } },
+        { "@type": "Question", "name": "Does it collect data?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. The only network request is an anonymous check for updates on GitHub, which you can turn off in Settings." } }
+      ]
+    }
+  ]
+}
+</script>
 <meta name="theme-color" content="#0f1923">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <script>
@@ -327,7 +371,10 @@
     <div data-r="txt">
       <a class="btn btn-red btn-lg" href="https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe"><span class="face">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>Download TrueStretch</span></a>
+      <a class="btn btn-line btn-lg" href="https://github.com/candyqueenjr/TrueStretch"><span class="face">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="miter" aria-hidden="true"><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>Star on GitHub</span></a>
     </div>
+    <p class="star-note" data-r="txt">Free and open source. A star helps other players find it.</p>
   </div>
 </section>
 

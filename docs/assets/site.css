@@ -461,6 +461,12 @@ kbd { display: inline-block; font: 600 14px/1.3 var(--disp); letter-spacing: .06
 .final .label { justify-content: center; }
 .final-title { font-size: clamp(60px, 16vw, 200px); margin: 20px 0 24px; }
 .final .sub { margin: 0 auto clamp(32px, 4vw, 48px); }
+.final .btn + .btn { margin-left: 12px; }
+.final .star-note { margin: 20px auto 0; color: var(--muted, #8b978f); font-size: 14px; letter-spacing: .02em; }
+@media (max-width: 560px) {
+  .final .btn { width: 100%; }
+  .final .btn + .btn { margin: 12px 0 0; }
+}
 
 /* ---------- footer ---------- */
 .foot { background: var(--dark); padding: clamp(40px, 5vw, 64px) 0 clamp(40px, 5vw, 64px); color: var(--faint); font-size: 15px; }

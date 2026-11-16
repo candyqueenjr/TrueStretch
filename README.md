@@ -11,6 +11,8 @@
 
 **[DOWNLOAD TRUESTRETCH.EXE](https://github.com/candyqueenjr/TrueStretch/releases/latest/download/TrueStretch.exe)** &nbsp;/&nbsp; [WEBSITE](https://candyqueenjr.github.io/TrueStretch/) &nbsp;/&nbsp; [CHANGELOG](CHANGELOG.md) &nbsp;/&nbsp; [REPORT A PROBLEM](https://github.com/candyqueenjr/TrueStretch/issues/new/choose)
 
+<sub>Free and open source. If TrueStretch helps you, press <b>⭐ Star</b> at the top of this page — it helps other players find it.</sub>
+
 </div>
 
 ---

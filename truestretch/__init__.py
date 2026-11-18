@@ -1,3 +1,3 @@
 APP_NAME = "TrueStretch"
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 TAGLINE = "True stretched resolution, one click."

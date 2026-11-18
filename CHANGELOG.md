@@ -2,6 +2,15 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] — 2026-11-18
+
+### Optimize Max
+- **Before vs after Optimize Max.** The *Your last match* row now also compares your real average FPS in the
+  matches played after your first Optimize Max change with the matches played before it (up to 5 matches and at
+  least 5 minutes of play on each side; a match running at the moment of the change counts on neither side), from
+  VALORANT's own per-round statistics. Read-only. Shown only when the logs VALORANT keeps have matches on both sides,
+  and not when the in-game FPS limit sets the FPS.
+
 ## [1.6.0] — 2026-11-16
 
 ### Works on PCs with Smart App Control

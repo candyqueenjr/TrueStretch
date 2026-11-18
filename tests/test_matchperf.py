@@ -2,7 +2,9 @@
 Crafted logs cover: one match (average FPS = frames / time, GPU-bound / CPU-bound / both, frames under 60 FPS from
 the buckets, memory, shader hitches, UTC -> local time), two matches in one file (the last one counts), the in-game
 FPS cap as the limit, a block cut off mid-way, a log without statistics, the fallback to the newest backup log, a
-missing folder. Then every real log on this PC, if present. Read-only: nothing is written outside a temp folder."""
+missing folder; before vs after Optimize Max (matches split at Round 0, start times, de-duplicated across logs,
+time-weighted averages, a match running at apply time counts on neither side, too little play, the FPS-cap case, the
+oldest change time from the undo file). Then every real log on this PC, if present. Read-only: nothing is written outside a temp folder."""
 import os
 import sys
 import tempfile
@@ -13,7 +15,7 @@ os.environ["APPDATA"] = tempfile.mkdtemp(prefix="ts-mperf-")
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
 from truestretch import matchperf as mp                                        # noqa: E402
-from truestretch.optimizer import INFO, _match_perf                            # noqa: E402
+from truestretch.optimizer import INFO, UNDO_FILE, Optimizer, _match_perf   # noqa: E402
 
 fails = []
 
@@ -125,6 +127,79 @@ check(info3 and info3["file"] == new.name and abs(info3["fps"] - 70.0) < 0.01, "
 check(mp.latest(Path(tempfile.mkdtemp()) / "missing") is None, "missing log folder -> None")
 check(_match_perf(FakeEngine(), Path(tempfile.mkdtemp())) is None, "no logs: scan step returns nothing")
 
+# ---- before vs after Optimize Max ---------------------------------------------------------------------------
+def at(day, hh, mm):
+    return f"2026.11.{day:02d}-{hh:02d}.{mm:02d}.00:000"
+
+
+def loc(day, hh, mm):
+    return datetime(2026, 11, day, hh, mm, tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
+ms = mp.split_matches(mp.parse_rounds(two))
+check([len(m) for m in ms] == [2, 2], "split_matches: a new match at every Round 0")
+check(mp.split_matches([]) == [], "split_matches: nothing -> nothing")
+s0 = mp.summary(mp.parse_rounds(HEAD + block(0, 6000, 120.0, 2.0, stamp=at(12, 10, 2)))[:1])
+check(s0 and s0["started"] == loc(12, 10, 0), "match start = end of its first round minus the round length")
+
+# two logs: an old session (2 matches before) and a new one (1 match after), plus a duplicate copy of one match
+d = Path(tempfile.mkdtemp(prefix="ts-mcmp-"))
+(d / "ShooterGame-backup-2026.11.10-10.00.00.log").write_text(
+    HEAD + block(0, 30000, 300.0, 2.0, stamp=at(10, 10, 5)) + block(1, 30000, 300.0, 2.0, stamp=at(10, 10, 10))
+    + block(0, 54000, 600.0, 2.0, stamp=at(10, 11, 10)), encoding="utf-8")       # 100 FPS 10 min, 90 FPS 10 min
+(d / "ShooterGame-backup-2026.11.10-12.00.00.log").write_text(
+    HEAD + block(0, 54000, 600.0, 2.0, stamp=at(10, 11, 10)), encoding="utf-8")  # same match again (copied log)
+(d / "ShooterGame.log").write_text(
+    HEAD + block(0, 66000, 600.0, 2.0, stamp=at(14, 20, 10)), encoding="utf-8")  # 110 FPS 10 min
+allm = mp.all_matches(d)
+check(len(allm) == 3 and [round(m["fps"]) for m in allm] == [100, 90, 110], "all_matches: oldest first, no duplicates "
+      f"({[round(m['fps']) for m in allm]})")
+since = loc(12, 9, 0)
+c = mp.compare(allm, since)
+check(c and abs(c["before"] - 95.0) < 0.01 and abs(c["after"] - 110.0) < 0.01 and c["n_before"] == 2
+      and c["n_after"] == 1, f"compare: time-weighted 95 -> 110 FPS ({c})")
+check(c and abs(c["change"] - (110 / 95 - 1)) < 1e-9, "compare: change = after / before - 1")
+check(mp.compare(allm, None) is None, "compare: nothing applied -> no comparison")
+check(mp.compare(allm, loc(9, 0, 0)) is None and mp.compare(allm, loc(15, 0, 0)) is None,
+      "compare: all matches on one side -> no comparison")
+check(mp.compare(allm, loc(10, 11, 5)) and mp.compare(allm, loc(10, 11, 5))["n_before"] == 1
+      and mp.compare(allm, loc(10, 11, 5))["n_after"] == 1, "compare: the match running at apply time counts on neither side")
+check(mp.compare(allm, since, min_minutes=11) is None, "compare: too little play on a side -> no comparison")
+check(mp.compare(allm, since, keep=1)["n_before"] == 1 and abs(mp.compare(allm, since, keep=1)["before"] - 90) < 0.01,
+      "compare: only the nearest matches before")
+check(mp.all_matches(Path(tempfile.mkdtemp()) / "missing") == [], "all_matches: missing folder -> []")
+
+it = _match_perf(FakeEngine(), d, since=since)
+check(it and "Since Optimize Max" in it.why and "110 FPS on average over 1 match," in it.why
+      and "before: 95 FPS over 2 matches (+16%)" in it.why, f"row: before/after sentence ({it and it.why})")
+check(it and any(x.startswith("before/after") for x in it.debug), "row: comparison in the diagnostics")
+it = _match_perf(FakeEngine(), d)
+check(it and "Since Optimize Max" not in it.why, "row: nothing applied -> no comparison sentence")
+
+
+
+
+
+import truestretch.optimizer as opt                                            # noqa: E402
+real_cap = opt._fps_cap
+opt._fps_cap = lambda engine: 110.0
+try:
+    it = _match_perf(FakeEngine(), d, since=since)
+    check(it and "Since Optimize Max" not in it.why, "row: FPS at the in-game cap -> no comparison (it says nothing)")
+finally:
+    opt._fps_cap = real_cap
+
+# applied_since: the oldest change still in the undo file
+o = Optimizer(FakeEngine())
+UNDO_FILE.parent.mkdir(parents=True, exist_ok=True)
+check(not UNDO_FILE.exists() and o.applied_since() is None, "applied_since: no undo file -> None")
+UNDO_FILE.write_text('{"a": {"time": "2026-11-14T20:00:00"}, "b": {"time": "2026-11-12T09:00:00", "admin": true},'
+                     ' "c": {"title": "no time"}, "d": {"time": "garbage"}}', encoding="utf-8")
+check(o.applied_since() == datetime(2026, 11, 12, 9, 0), "applied_since: oldest valid time, bad entries skipped")
+UNDO_FILE.write_text("not json", encoding="utf-8")
+check(o.applied_since() is None, "applied_since: broken undo file -> None")
+UNDO_FILE.unlink()
+
 real = Path(os.environ.get("LOCALAPPDATA", "")) / "VALORANT" / "Saved" / "Logs"
 if real.is_dir():
     for path in sorted(real.glob("ShooterGame*.log")):
@@ -137,6 +212,12 @@ if real.is_dir():
         check(len(bucket_ok) == len(rs), f"real {path.name}: buckets add up to Total Frames in every round")
     it = _match_perf(FakeEngine())
     check(it is None or it.id == "match_perf", "real scan step builds the row (or none)")
+    allr = mp.all_matches(real)
+    check(all(m["started"] <= m["ended"] for m in allr), f"real: {len(allr)} matches across all logs, start <= end")
+    if len(allr) >= 2:
+        mid = allr[len(allr) // 2]["started"]
+        cr = mp.compare(allr, mid)
+        print(f"INFO real before/after split at {mid:%d %b %H:%M}: {cr}")
     if it:
         print(f"INFO real row: {it.title} | {it.why} | {it.note}")
 else:

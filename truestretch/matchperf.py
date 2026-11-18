@@ -22,7 +22,7 @@ Rounds are numbered from 0 in every match, so "Round 0" starts a new match. The 
 Format verified on real logs, release-13.09 and release-13.10, 2026-11-12. Read only."""
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 MAX_BYTES = 64 * 1024 * 1024          # a long session's log is ~10 MB; never read something absurd
@@ -34,6 +34,8 @@ _VALUE = re.compile(r"^\s+([A-Za-z][A-Za-z0-9 .+()]*?)\s*:\s*(-?\d+(?:\.\d+)?)\s
 _BUCKET = re.compile(r"^Game Thread Frames (Under|Over) (\d+) fps$")
 
 GPU_BOUND, CPU_BOUND = 0.80, 0.60     # share of each frame the graphics card was busy
+COMPARE_KEEP = 5                      # before/after Optimize Max: at most the 5 nearest matches on each side
+COMPARE_MIN_MINUTES = 5.0             # ... and at least 5 minutes of play on each side, or no comparison
 
 
 def _utc(m):
@@ -87,6 +89,16 @@ def last_match(rounds):
     return rounds[starts[-1]:] if starts else rounds
 
 
+def split_matches(rounds):
+    """The rounds cut into matches: a new match starts at every 'Round 0'."""
+    matches = []
+    for r in rounds:
+        if r["round"] == 0 or not matches:
+            matches.append([])
+        matches[-1].append(r)
+    return matches
+
+
 def summary(match):
     """{"fps", "rounds", "minutes", "gpu_busy" (0..1 | None), "slow_share" (frames under 60 FPS, 0..1 | None),
     "memory" (% | None), "hitches", "ended"} for one match, or None."""
@@ -108,7 +120,16 @@ def summary(match):
     return {"fps": frames / secs, "rounds": len(match), "minutes": secs / 60.0,
             "gpu_busy": min(1.0, gpu_ms / frame_ms) if gpu_ms is not None and frame_ms > 0 else None,
             "slow_share": slow, "memory": max(mem) if mem else None,
-            "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"]}
+            "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"],
+            "started": _started(match[0])}
+
+
+def _started(first):
+    """Local start time of a match: the end of its first round minus that round's length (None if unknown)."""
+    try:
+        return first["time"] - timedelta(seconds=first["secs"]) if first["time"] else None
+    except (OverflowError, TypeError):
+        return None
 
 
 def limit(info, fps_cap=None):
@@ -135,12 +156,7 @@ def _read(path):
 
 def latest(log_dir):
     """summary() of the last match in the newest log that has one (current log first, then backups), or None."""
-    log_dir = Path(log_dir)
-    try:
-        backups = sorted(log_dir.glob("ShooterGame-backup-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
-    except OSError:
-        backups = []
-    for path in [log_dir / "ShooterGame.log"] + backups[:5]:
+    for path in _logs(log_dir, backups=5):
         match = last_match(parse_rounds(_read(path)))
         info = summary(match)
         if info:
@@ -149,4 +165,50 @@ def latest(log_dir):
     return None
 
 
-__all__ = ["parse_rounds", "last_match", "summary", "limit", "latest"]
+def _logs(log_dir, backups=10):
+    log_dir = Path(log_dir)
+    try:
+        olds = sorted(log_dir.glob("ShooterGame-backup-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        olds = []
+    return [log_dir / "ShooterGame.log"] + olds[:backups]
+
+
+def all_matches(log_dir):
+    """summary() of every match in the current log and the backups VALORANT keeps, oldest first, without
+    duplicates."""
+    seen, out = set(), []
+    for path in _logs(log_dir):
+        for match in split_matches(parse_rounds(_read(path))):
+            info = summary(match)
+            if info and info["started"] and info["ended"] and (info["started"], info["ended"]) not in seen:
+                seen.add((info["started"], info["ended"]))
+                info["file"] = path.name
+                out.append(info)
+    return sorted(out, key=lambda m: m["started"])
+
+
+def _average(matches):
+    """Time-weighted average FPS (= all frames / all seconds) and total minutes of a list of match summaries."""
+    minutes = sum(m["minutes"] for m in matches)
+    return (sum(m["fps"] * m["minutes"] for m in matches) / minutes if minutes > 0 else None), minutes
+
+
+def compare(matches, since, keep=COMPARE_KEEP, min_minutes=COMPARE_MIN_MINUTES):
+    """Average FPS of the matches before vs after `since` (the first Optimize Max change, local datetime):
+    {"before", "after" (FPS), "n_before", "n_after", "change" (after / before - 1)} or None when either side has no
+    match or less than `min_minutes` of play. A match that was running at `since` counts on neither side."""
+    if not since:
+        return None
+    before = [m for m in matches if m["ended"] < since][-keep:]
+    after = [m for m in matches if m["started"] >= since][-keep:]
+    if not before or not after:
+        return None
+    fb, mb = _average(before)
+    fa, ma = _average(after)
+    if not fb or not fa or mb < min_minutes or ma < min_minutes:
+        return None
+    return {"before": fb, "after": fa, "n_before": len(before), "n_after": len(after), "change": fa / fb - 1.0}
+
+
+__all__ = ["parse_rounds", "last_match", "split_matches", "summary", "limit", "latest", "all_matches", "compare"]

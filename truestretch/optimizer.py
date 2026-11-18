@@ -336,9 +336,10 @@ def _fps_cap(engine):
         return None
 
 
-def _match_perf(engine, log_dir=None):
+def _match_perf(engine, log_dir=None, since=None):
     """Read-only: how VALORANT really ran in the last match - average FPS, what limits it (graphics card, processor or
-    the FPS cap), stutters and memory - from the game's own per-round statistics in its log."""
+    the FPS cap), stutters and memory - from the game's own per-round statistics in its log. `since` = time of the
+    first Optimize Max change still in place: then the matches before and after it are compared too."""
     from . import matchperf
     from .games.valorant import LOG_DIR
     info = matchperf.latest(log_dir or LOG_DIR)
@@ -376,6 +377,15 @@ def _match_perf(engine, log_dir=None):
     debug = [f"{info['file']}: {info['rounds']} rounds, {info['minutes']:.1f} min, {fps:.1f} FPS, gpu busy "
              f"{busy if busy is None else round(busy, 3)}, slow {slow if slow is None else round(slow, 4)}, memory "
              f"{info['memory']}, hitches {info['hitches']}, limit {kind}"]
+    cmp = matchperf.compare(matchperf.all_matches(log_dir or LOG_DIR), since) if since and kind != "cap" else None
+    if cmp:
+        n_a, n_b = cmp["n_after"], cmp["n_before"]
+        why.append(f"Since Optimize Max ({since:%d %b}): {cmp['after']:.0f} FPS on average over {n_a} "
+                   f"match{'es' if n_a != 1 else ''}, before: {cmp['before']:.0f} FPS over {n_b} "
+                   f"match{'es' if n_b != 1 else ''} ({cmp['change'] * 100:+.0f}%). Maps and modes change FPS too, "
+                   "so this gets more accurate with every match.")
+        debug.append(f"before/after {since:%Y-%m-%d %H:%M}: {cmp['before']:.1f} ({n_b}) -> {cmp['after']:.1f} "
+                     f"({n_a}), {cmp['change'] * 100:+.1f}%")
     return Item("match_perf", "Your PC", f"Your last match: {fps:.0f} FPS average", " ".join(w for w in why if w),
                 f"{fps:.0f} FPS", f"{hz}+ FPS" if hz else "—", INFO, "More FPS", 2, note=" ".join(notes),
                 debug=debug)
@@ -688,6 +698,16 @@ class Optimizer:
     def changed_ids(self):
         return set(self._undo_data())
 
+    def applied_since(self):
+        """When the oldest Optimize Max change that is still in place was made (local datetime), or None."""
+        times = []
+        for entry in self._undo_data().values():
+            try:
+                times.append(datetime.fromisoformat(entry["time"]))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                continue
+        return min(times) if times else None
+
     # scanning --------------------------------------------------------------
     def steps(self, pc):
         """[(label, callable)] - every check, in the order the scan runs them (shown live in the UI)."""
@@ -719,7 +739,7 @@ class Optimizer:
             ("Drive VALORANT is installed on", lambda: more.storage_item(e)),
             ("Network connection", more.network_item),
             ("Graphics drivers, battery, memory integrity", lambda: _info_items(e, pc)),
-            ("Your last match (VALORANT's own statistics)", lambda: _match_perf(e)),
+            ("Your last match (VALORANT's own statistics)", lambda: _match_perf(e, since=self.applied_since())),
             ("Settings inside VALORANT", lambda: _in_game_items(e)),
             ("Graphics panel settings", lambda: more.panel_items(vendor) if vendor in ("amd", "intel") else []),
         ]

@@ -2,6 +2,14 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] — 2026-11-18
+
+### Optimize Max
+- **Who filled the memory.** When Windows memory was 90% full or more in your last match, the *Your last match* row
+  now says how much VALORANT itself used and how much the other programs used (from the game's own per-round
+  statistics, at the round where memory was fullest). The advice depends on it: close other apps when they used most
+  of it, or more memory (RAM) when the game itself needs most of it. Logs without these lines keep the short advice.
+
 ## [1.7.0] — 2026-11-18
 
 ### Optimize Max

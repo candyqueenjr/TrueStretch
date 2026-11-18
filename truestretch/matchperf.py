@@ -14,12 +14,15 @@ At the end of every round VALORANT writes a statistics block into
             Game Thread Frames Over 480 fps: 0
     ...LogClientPerRoundTelemetryComponent:
             Total Time(secs): 129.89
-            System Memory Util(mean): 82.89
+            System Memory Util(mean): 82.89         <- % of the PC's memory in use (all programs)
+            Valorant Memory Util(mean): 14.05       <- % of the PC's memory VALORANT itself used
+            Valorant Memory MB(mean): 2251.27       <- the same in MB (MB / % = the PC's total memory)
             GPU Time(mean): 2.05                    <- ms the graphics card worked per frame
             Runtime PSO Hitches: 0                  <- shader-compile stutters
 
 Rounds are numbered from 0 in every match, so "Round 0" starts a new match. The timestamp in brackets is UTC.
-Format verified on real logs, release-13.09 and release-13.10, 2026-11-12. Read only."""
+Format verified on real logs, release-13.09 and release-13.10, 2026-11-12 (the VALORANT memory lines
+2026-11-18). Read only."""
 
 import re
 from datetime import datetime, timedelta, timezone
@@ -75,7 +78,8 @@ def parse_rounds(text):
             cur["buckets"][0 if b.group(1) == "Under" else int(b.group(2))] = int(value)
             continue
         key = {"Avg.Frametime (ms)": "frametime", "Total Frames": "frames", "Total Time(secs)": "secs",
-               "GPU Time(mean)": "gpu", "System Memory Util(mean)": "memory", "Runtime PSO Hitches": "hitches"}.get(name)
+               "GPU Time(mean)": "gpu", "System Memory Util(mean)": "memory", "Runtime PSO Hitches": "hitches",
+               "Valorant Memory MB(mean)": "game_mb", "Valorant Memory Util(mean)": "game_pct"}.get(name)
         if key:
             cur[key] = value
     if cur is not None and cur["round"] is not None:
@@ -101,7 +105,9 @@ def split_matches(rounds):
 
 def summary(match):
     """{"fps", "rounds", "minutes", "gpu_busy" (0..1 | None), "slow_share" (frames under 60 FPS, 0..1 | None),
-    "memory" (% | None), "hitches", "ended"} for one match, or None."""
+    "memory" (% | None), "hitches", "ended", "started", and from the round where memory was fullest: "game_mb"
+    (MB VALORANT itself used | None), "total_mb" (the PC's memory | None), "others_mb" (everything else | None)}
+    for one match, or None."""
     if not match:
         return None
     frames = sum(r["frames"] for r in match)
@@ -117,11 +123,30 @@ def summary(match):
         total = sum(r["frames"] for r in bucketed)
         slow = sum(n for r in bucketed for lo, n in r["buckets"].items() if lo < 60) / total
     mem = [r["memory"] for r in match if r.get("memory") is not None]
+    peak = max((r for r in match if r.get("memory") is not None), key=lambda r: r["memory"], default=None)
+    game_mb, total_mb, others_mb = _memory_split(peak)
     return {"fps": frames / secs, "rounds": len(match), "minutes": secs / 60.0,
             "gpu_busy": min(1.0, gpu_ms / frame_ms) if gpu_ms is not None and frame_ms > 0 else None,
             "slow_share": slow, "memory": max(mem) if mem else None,
             "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"],
-            "started": _started(match[0])}
+            "started": _started(match[0]), "game_mb": game_mb, "total_mb": total_mb, "others_mb": others_mb}
+
+
+def _memory_split(r):
+    """(MB VALORANT used, the PC's total MB, MB used by everything else) for one round, each None when unknown or
+    implausible. Total = VALORANT MB / VALORANT % (the log has no total line); others = system % of total - VALORANT."""
+    if not r:
+        return None, None, None
+    game_mb, game_pct, system = r.get("game_mb"), r.get("game_pct"), r.get("memory")
+    if not game_mb or game_mb <= 0:
+        return None, None, None
+    if not game_pct or game_pct <= 0 or game_pct > 100 or system is None or not 0 < system <= 100:
+        return game_mb, None, None
+    total = 100.0 * game_mb / game_pct
+    if not 1024 <= total <= 4 * 1024 * 1024:               # 1 GB .. 4 TB, or the numbers don't belong together
+        return game_mb, None, None
+    others = total * system / 100.0 - game_mb
+    return game_mb, total, (others if others >= 0 else None)
 
 
 def _started(first):

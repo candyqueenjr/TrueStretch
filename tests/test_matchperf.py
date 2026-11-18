@@ -1,6 +1,7 @@
 """Optimize Max: "Your last match" reads VALORANT's own end-of-round performance statistics from ShooterGame.log.
 Crafted logs cover: one match (average FPS = frames / time, GPU-bound / CPU-bound / both, frames under 60 FPS from
-the buckets, memory, shader hitches, UTC -> local time), two matches in one file (the last one counts), the in-game
+the buckets, memory, shader hitches, UTC -> local time; how much
+memory VALORANT itself used vs other programs), two matches in one file (the last one counts), the in-game
 FPS cap as the limit, a block cut off mid-way, a log without statistics, the fallback to the newest backup log, a
 missing folder; before vs after Optimize Max (matches split at Round 0, start times, de-duplicated across logs,
 time-weighted averages, a match running at apply time counts on neither side, too little play, the FPS-cap case, the
@@ -25,7 +26,8 @@ def check(c, t):
     c or fails.append(t)
 
 
-def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11.12-09.51.52:665"):
+def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11.12-09.51.52:665", game_mb=3275.90,
+          game_pct=None):
     """One end-of-round block in the exact real layout (tabs, two continuation headers). `slow` frames go into the
     30-45 FPS bucket, the rest into 144-240."""
     ft = 1000.0 * secs / frames
@@ -40,8 +42,10 @@ def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11
             f"[{stamp}][437]LogClientPerRoundTelemetryComponent: \r\n"
             f"\t\tTotal Time(secs): {secs}\r\n\t\tValorant CPU Util(mean): 399.13\r\n"
             f"\t\tSystem Memory Util(mean): {memory}\r\n\t\tGPU Time(mean): {gpu}\r\n"
-            "\t\tGPU Frames Over 360fps: 20766\r\n\t\tValorant Memory MB(mean): 3275.90\r\n"
-            f"\t\tRuntime PSO Hitches: {hitches}\r\n\t\tRHI: D3D11\r\n"
+            "\t\tGPU Frames Over 360fps: 20766\r\n"
+            + (f"\t\tValorant Memory Util(mean): {game_pct}\r\n" if game_pct is not None else "")
+            + (f"\t\tValorant Memory MB(mean): {game_mb}\r\n" if game_mb is not None else "")
+            + f"\t\tRuntime PSO Hitches: {hitches}\r\n\t\tRHI: D3D11\r\n"
             f"[{stamp}][437]LogShooterGameState: Warning: AShooterGameState::OnRoundEnded for round '{rnd}'\r\n")
 
 
@@ -91,6 +95,35 @@ info2 = mp.summary(mp.last_match(mp.parse_rounds(two)))
 check(info2 and info2["rounds"] == 2 and abs(info2["fps"] - 100.0) < 0.01, "two matches in one file -> only the last")
 check(info2 and abs(info2["slow_share"] - 450 / 20000) < 1e-9, "frames under 60 FPS share from the buckets (2.25%)")
 check(info2 and info2["memory"] == 93.0 and info2["hitches"] == 12, "peak memory and shader hitches summed")
+
+# memory: how much VALORANT itself used vs other programs (16 GB PC, 2 GB game, 97% full -> 13.5 GB others, shown as 14 GB)
+mem_log = HEAD + block(0, 24000, 120.0, 2.0, memory=85.0, game_mb=1800.0, game_pct=11.25)     + block(1, 24000, 120.0, 2.0, memory=97.0, game_mb=2048.0, game_pct=12.5)     + block(2, 24000, 120.0, 2.0, memory=90.0, game_mb=2100.0, game_pct=12.8)
+mi = mp.summary(mp.last_match(mp.parse_rounds(mem_log)))
+check(mi and mi["game_mb"] == 2048.0 and abs(mi["total_mb"] - 16384.0) < 0.01,
+      "memory: game MB taken from the fullest round, total = MB / %")
+check(mi and abs(mi["others_mb"] - (16384 * 0.97 - 2048)) < 0.01, "memory: others = system % of total - game")
+it = _match_perf(FakeEngine(), folder(mem_log))
+check(it and "97% full" in it.note and "VALORANT itself used 2.0 GB of your 16 GB" in it.note
+      and "other programs about 14 GB" in it.note and "frees the most" in it.note,
+      f"note: other programs filled the memory ({it and it.note})")
+check(it and any("valorant MB 2048, total MB 16384, others MB 13844" in x for x in it.debug), "memory split in diagnostics")
+big = HEAD + block(0, 24000, 120.0, 2.0, memory=95.0, game_mb=5000.0, game_pct=62.5)     # 8 GB PC, game 4.9 GB
+it = _match_perf(FakeEngine(), folder(big))
+check(it and "VALORANT itself used 4.9 GB of your 7.8 GB" in it.note and "more memory (RAM) helps most" in it.note,
+      f"note: the game itself needs most of the memory ({it and it.note})")
+old_fmt = HEAD + block(0, 24000, 120.0, 2.0, memory=95.0, game_mb=None)
+it = _match_perf(FakeEngine(), folder(old_fmt))
+check(it and it.note == "Windows memory was 95% full during the match - close browsers and launchers before playing.",
+      "note: log without the VALORANT memory lines -> the plain advice")
+check(mp._memory_split({"memory": 95.0, "game_mb": 2048.0}) == (2048.0, None, None), "split: no % -> game MB only")
+check(mp._memory_split({"memory": 95.0, "game_mb": 2048.0, "game_pct": 0.001}) == (2048.0, None, None),
+      "split: implausible total (> 4 TB) -> game MB only")
+check(mp._memory_split({"memory": 5.0, "game_mb": 2048.0, "game_pct": 50.0}) == (2048.0, 4096.0, None),
+      "split: system % below the game's own -> others unknown")
+check(mp._memory_split(None) == (None, None, None) and mp._memory_split({"memory": 90.0}) == (None, None, None),
+      "split: nothing -> nothing")
+it = _match_perf(FakeEngine(), folder(HEAD + block(0, 24000, 120.0, 2.0, memory=80.0, game_mb=2048.0, game_pct=12.5)))
+check(it and it.note == "", "memory under 90% -> no memory note")
 
 # a block cut off before Total Time (the game was closed mid-write) is ignored
 cut = HEAD + block(0, 24000, 120.0, 2.0) + ("[2026.11.12-10.00.00:000][  1]LogClientPerRoundTelemetryComponent: End of "
@@ -208,6 +241,10 @@ if real.is_dir():
         ok = all(r.get("frames", 0) > 0 and r.get("secs", 0) > 0 for r in rs)
         check(ok and (s is None or 1 < s["fps"] < 2000), f"real {path.name}: {len(rs)} rounds, "
               + (f"last match {s['fps']:.0f} FPS, limit {mp.limit(s)}" if s else "no match"))
+        mem_ok = [r for r in rs if r.get("game_mb") and r.get("game_pct")]
+        tot = {round(100 * r["game_mb"] / r["game_pct"] / 64) for r in mem_ok}
+        check(not rs or (len(mem_ok) == len(rs) and len(tot) <= 2), f"real {path.name}: VALORANT memory lines in every "
+              f"round, total memory consistent ({sorted(t * 64 for t in tot)} MB)")
         bucket_ok = [r for r in rs if r["buckets"] and sum(r["buckets"].values()) == int(r["frames"])]
         check(len(bucket_ok) == len(rs), f"real {path.name}: buckets add up to Total Frames in every round")
     it = _match_perf(FakeEngine())

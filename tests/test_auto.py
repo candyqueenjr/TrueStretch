@@ -34,7 +34,7 @@ for mod, cls in (("amd", "AmdApi"), ("intel", "IntelApi")):
 e = Engine(Settings({g.id: g.default_settings() for g in GAMES})); e.timer.stop()
 gs = e.gs("valorant")
 intel = next(d for d in display.list_displays() if d.vendor == "intel")
-nvidia = next(d for d in display.list_displays() if d.vendor == "nvidia")
+nvidia = next((d for d in display.list_displays() if d.vendor == "nvidia"), None)   # external screen: may be unplugged
 
 # 1) Intel screen: driver refuses every x1080 custom size -> closest built-in mode, automatically
 gs["display"] = intel.device
@@ -66,13 +66,17 @@ time.sleep(1.0)
 check(display.current_mode(intel.device) == before, f"Intel screen back to {before}")
 check(displayconfig.monitor_for(intel.device).scaling == scaling_before, "Intel scaling restored")
 
-# 3) NVIDIA screen: exact sizes still used
-gs["display"] = nvidia.device
-for w in (1568, 1440, 1360, 1280):
-    gs["width"], gs["height"] = w, 1080
-    e._resolved.clear()
-    mode = e.ensure_stretch_mode("valorant")
-    check(mode.size == (w, 1080), f"NVIDIA {w}x1080 exact -> {mode}")
+# 3) NVIDIA screen: exact sizes still used (only when a screen on the NVIDIA card is connected right now)
+if nvidia is None:
+    print("INFO no screen on an NVIDIA card connected right now - NVIDIA exact-size part skipped")
+else:
+    gs["display"] = nvidia.device
+    for w in (1568, 1440, 1360, 1280):
+        gs["width"], gs["height"] = w, 1080
+        e._resolved.clear()
+        mode = e.ensure_stretch_mode("valorant")
+        check(mode.size == (w, 1080), f"NVIDIA {w}x1080 exact -> {mode}")
+gs["display"] = intel.device if nvidia is None else nvidia.device
 
 # 4) first run: no settings files at all -> Play works, auto-stretch waits, setup happens after the game closes
 fake = TMP / "Config"

@@ -2,6 +2,16 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] — 2026-11-19
+
+### Optimize Max
+- **Game delay.** The *Your last match* row now shows VALORANT's own *engine latency*: how many milliseconds the
+  game itself took per frame on average in your last match, which is the part of your input delay the game adds
+  (mouse and monitor add theirs). Averaged over every frame of the match, from the game's per-round statistics.
+  Read-only; logs without the line don't show it.
+- **Before vs after, now with delay.** When matches before and after your first Optimize Max change can be compared,
+  the row also shows the game delay on both sides (only when every compared match has the figure).
+
 ## [1.7.1] — 2026-11-18
 
 ### Optimize Max

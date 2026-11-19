@@ -358,6 +358,10 @@ def _match_perf(engine, log_dir=None, since=None):
            f"round{'s' if info['rounds'] != 1 else ''}."]
     if busy is not None and kind != "cap":
         why.append(f"The graphics card was busy {busy * 100:.0f}% of each frame.")
+    if info.get("latency") is not None:
+        why.append(f"Game delay: {info['latency']:.1f} ms per frame on average - the part of your input delay the "
+                   "game itself adds (VALORANT's own 'engine latency'; mouse and monitor add theirs). More FPS "
+                   "lowers it.")
     why.append({"gpu": "Your graphics card sets the FPS: lower graphics quality (Material, Texture, Detail) and the "
                        "stretched resolution give the most extra frames.",
                 "cpu": "Your processor sets the FPS, not the graphics card - lowering graphics quality adds little. "
@@ -376,7 +380,7 @@ def _match_perf(engine, log_dir=None, since=None):
     debug = [f"{info['file']}: {info['rounds']} rounds, {info['minutes']:.1f} min, {fps:.1f} FPS, gpu busy "
              f"{busy if busy is None else round(busy, 3)}, slow {slow if slow is None else round(slow, 4)}, memory "
              f"{info['memory']}, hitches {info['hitches']}, limit {kind}, valorant MB {_mb(info['game_mb'])}, total MB "
-             f"{_mb(info['total_mb'])}, others MB {_mb(info['others_mb'])}"]
+             f"{_mb(info['total_mb'])}, others MB {_mb(info['others_mb'])}, engine latency {_ms(info.get('latency'))}"]
     cmp = matchperf.compare(matchperf.all_matches(log_dir or LOG_DIR), since) if since and kind != "cap" else None
     if cmp:
         n_a, n_b = cmp["n_after"], cmp["n_before"]
@@ -384,8 +388,11 @@ def _match_perf(engine, log_dir=None, since=None):
                    f"match{'es' if n_a != 1 else ''}, before: {cmp['before']:.0f} FPS over {n_b} "
                    f"match{'es' if n_b != 1 else ''} ({cmp['change'] * 100:+.0f}%). Maps and modes change FPS too, "
                    "so this gets more accurate with every match.")
+        lb, la = cmp.get("latency_before"), cmp.get("latency_after")
+        if lb is not None and la is not None:
+            why.append(f"Game delay since Optimize Max: {la:.1f} ms, before: {lb:.1f} ms.")
         debug.append(f"before/after {since:%Y-%m-%d %H:%M}: {cmp['before']:.1f} ({n_b}) -> {cmp['after']:.1f} "
-                     f"({n_a}), {cmp['change'] * 100:+.1f}%")
+                     f"({n_a}), {cmp['change'] * 100:+.1f}%, latency {_ms(lb)} -> {_ms(la)}")
     return Item("match_perf", "Your PC", f"Your last match: {fps:.0f} FPS average", " ".join(w for w in why if w),
                 f"{fps:.0f} FPS", f"{hz}+ FPS" if hz else "—", INFO, "More FPS", 2, note=" ".join(notes),
                 debug=debug)
@@ -393,6 +400,10 @@ def _match_perf(engine, log_dir=None, since=None):
 
 def _mb(v):
     return None if v is None else round(v)
+
+
+def _ms(v):
+    return None if v is None else round(v, 2)
 
 
 def _gb(mb):

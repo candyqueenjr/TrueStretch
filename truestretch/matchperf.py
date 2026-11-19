@@ -13,6 +13,11 @@ At the end of every round VALORANT writes a statistics block into
             ...
             Game Thread Frames Over 480 fps: 0
     ...LogClientPerRoundTelemetryComponent:
+            Avg. Engine Latency (ms): 6.13          <- the game's own part of the input delay per frame
+            Avg. Work (ms): 4.83                    <- (always = Work + Slop + Slack, checked on 395 real rounds)
+            Avg. Slop (ms): 0.17
+            Avg. Slack (ms): 1.14
+    ...LogClientPerRoundTelemetryComponent:
             Total Time(secs): 129.89
             System Memory Util(mean): 82.89         <- % of the PC's memory in use (all programs)
             Valorant Memory Util(mean): 14.05       <- % of the PC's memory VALORANT itself used
@@ -22,7 +27,7 @@ At the end of every round VALORANT writes a statistics block into
 
 Rounds are numbered from 0 in every match, so "Round 0" starts a new match. The timestamp in brackets is UTC.
 Format verified on real logs, release-13.09 and release-13.10, 2026-11-12 (the VALORANT memory lines
-2026-11-18). Read only."""
+2026-11-18, the engine latency line 2026-11-19). Read only."""
 
 import re
 from datetime import datetime, timedelta, timezone
@@ -49,7 +54,7 @@ def _utc(m):
 
 
 def parse_rounds(text):
-    """[{"round", "time" (local datetime | None), "frametime", "frames", "secs", "gpu", "memory", "hitches",
+    """[{"round", "time" (local datetime | None), "frametime", "frames", "secs", "gpu", "memory", "hitches", "latency",
     "buckets": {(lo FPS): frames}}] for every complete round block in the text, in order."""
     rounds, cur = [], None
     for line in text.splitlines():
@@ -79,7 +84,8 @@ def parse_rounds(text):
             continue
         key = {"Avg.Frametime (ms)": "frametime", "Total Frames": "frames", "Total Time(secs)": "secs",
                "GPU Time(mean)": "gpu", "System Memory Util(mean)": "memory", "Runtime PSO Hitches": "hitches",
-               "Valorant Memory MB(mean)": "game_mb", "Valorant Memory Util(mean)": "game_pct"}.get(name)
+               "Valorant Memory MB(mean)": "game_mb", "Valorant Memory Util(mean)": "game_pct",
+               "Avg. Engine Latency (ms)": "latency"}.get(name)
         if key:
             cur[key] = value
     if cur is not None and cur["round"] is not None:
@@ -106,8 +112,8 @@ def split_matches(rounds):
 def summary(match):
     """{"fps", "rounds", "minutes", "gpu_busy" (0..1 | None), "slow_share" (frames under 60 FPS, 0..1 | None),
     "memory" (% | None), "hitches", "ended", "started", and from the round where memory was fullest: "game_mb"
-    (MB VALORANT itself used | None), "total_mb" (the PC's memory | None), "others_mb" (everything else | None)}
-    for one match, or None."""
+    (MB VALORANT itself used | None), "total_mb" (the PC's memory | None), "others_mb" (everything else | None),
+    "latency" (VALORANT's average engine latency in ms, weighted by frames | None)} for one match, or None."""
     if not match:
         return None
     frames = sum(r["frames"] for r in match)
@@ -125,11 +131,14 @@ def summary(match):
     mem = [r["memory"] for r in match if r.get("memory") is not None]
     peak = max((r for r in match if r.get("memory") is not None), key=lambda r: r["memory"], default=None)
     game_mb, total_mb, others_mb = _memory_split(peak)
+    lat = [r for r in match if r.get("latency") is not None and 0 < r["latency"] < 1000]
+    latency = sum(r["latency"] * r["frames"] for r in lat) / sum(r["frames"] for r in lat) if lat else None
     return {"fps": frames / secs, "rounds": len(match), "minutes": secs / 60.0,
             "gpu_busy": min(1.0, gpu_ms / frame_ms) if gpu_ms is not None and frame_ms > 0 else None,
             "slow_share": slow, "memory": max(mem) if mem else None,
             "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"],
-            "started": _started(match[0]), "game_mb": game_mb, "total_mb": total_mb, "others_mb": others_mb}
+            "started": _started(match[0]), "game_mb": game_mb, "total_mb": total_mb, "others_mb": others_mb,
+            "latency": latency}
 
 
 def _memory_split(r):
@@ -213,6 +222,16 @@ def all_matches(log_dir):
     return sorted(out, key=lambda m: m["started"])
 
 
+def _latency(matches):
+    """Frame-weighted average engine latency (ms) of a list of match summaries, or None unless every match has it
+    (a mix would compare different sets of matches)."""
+    if not matches or any(m.get("latency") is None for m in matches):
+        return None
+    frames = [m["fps"] * m["minutes"] * 60.0 for m in matches]
+    total = sum(frames)
+    return sum(m["latency"] * f for m, f in zip(matches, frames)) / total if total > 0 else None
+
+
 def _average(matches):
     """Time-weighted average FPS (= all frames / all seconds) and total minutes of a list of match summaries."""
     minutes = sum(m["minutes"] for m in matches)
@@ -221,7 +240,8 @@ def _average(matches):
 
 def compare(matches, since, keep=COMPARE_KEEP, min_minutes=COMPARE_MIN_MINUTES):
     """Average FPS of the matches before vs after `since` (the first Optimize Max change, local datetime):
-    {"before", "after" (FPS), "n_before", "n_after", "change" (after / before - 1)} or None when either side has no
+    {"before", "after" (FPS), "n_before", "n_after", "change" (after / before - 1), "latency_before",
+    "latency_after" (engine latency ms, None unless every match on that side has it)} or None when either side has no
     match or less than `min_minutes` of play. A match that was running at `since` counts on neither side."""
     if not since:
         return None
@@ -233,7 +253,8 @@ def compare(matches, since, keep=COMPARE_KEEP, min_minutes=COMPARE_MIN_MINUTES):
     fa, ma = _average(after)
     if not fb or not fa or mb < min_minutes or ma < min_minutes:
         return None
-    return {"before": fb, "after": fa, "n_before": len(before), "n_after": len(after), "change": fa / fb - 1.0}
+    return {"before": fb, "after": fa, "n_before": len(before), "n_after": len(after), "change": fa / fb - 1.0,
+            "latency_before": _latency(before), "latency_after": _latency(after)}
 
 
 __all__ = ["parse_rounds", "last_match", "split_matches", "summary", "limit", "latest", "all_matches", "compare"]

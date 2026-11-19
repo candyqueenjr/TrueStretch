@@ -27,7 +27,7 @@ def check(c, t):
 
 
 def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11.12-09.51.52:665", game_mb=3275.90,
-          game_pct=None):
+          game_pct=None, latency=6.38):
     """One end-of-round block in the exact real layout (tabs, two continuation headers). `slow` frames go into the
     30-45 FPS bucket, the rest into 144-240."""
     ft = 1000.0 * secs / frames
@@ -38,7 +38,8 @@ def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11
             f"\t\tGame Thread Frames Over 144 fps: {frames - slow}\r\n\t\tGame Thread Frames Over 480 fps: 0\r\n"
             "\t\tFlips At 120Hz: 0\r\n"
             f"[{stamp}][437]LogClientPerRoundTelemetryComponent: \r\n"
-            "\t\tAvg. Engine Latency (ms): 6.38\r\n\t\tEngine Latency Frames Over 144fps: 10\r\n"
+            + (f"\t\tAvg. Engine Latency (ms): {latency}\r\n" if latency is not None else "")
+            + "\t\tAvg. Work (ms): 4.83\r\n\t\tEngine Latency Frames Over 144fps: 10\r\n"
             f"[{stamp}][437]LogClientPerRoundTelemetryComponent: \r\n"
             f"\t\tTotal Time(secs): {secs}\r\n\t\tValorant CPU Util(mean): 399.13\r\n"
             f"\t\tSystem Memory Util(mean): {memory}\r\n\t\tGPU Time(mean): {gpu}\r\n"
@@ -211,6 +212,46 @@ check(it and "Since Optimize Max" not in it.why, "row: nothing applied -> no com
 
 
 
+# ---- engine latency (the game's own part of the input delay) --------------------------------------------------
+lat_log = HEAD + block(0, 24000, 120.0, 2.0, latency=5.0) + block(1, 20000, 100.0, 2.0, latency=8.0)
+li = mp.summary(mp.last_match(mp.parse_rounds(lat_log)))
+check(li and abs(li["latency"] - (5.0 * 24000 + 8.0 * 20000) / 44000) < 1e-9,
+      f"latency: frame-weighted average of the rounds ({li and li['latency']})")
+check(mp.parse_rounds(lat_log)[0]["buckets"] == {0: 0, 1: 0, 30: 0, 60: 0, 144: 24000, 480: 0},
+      "latency: 'Engine Latency Frames' lines don't mix into the frame-time buckets")
+it = _match_perf(FakeEngine(), folder(lat_log))
+check(it and "Game delay: 6.4 ms per frame on average" in it.why and "engine latency" in it.why,
+      f"row: game delay sentence ({it and it.why})")
+check(it and any("engine latency 6.36" in x for x in it.debug), "latency in the diagnostics")
+no_lat = HEAD + block(0, 24000, 120.0, 2.0, latency=None)
+check(mp.summary(mp.parse_rounds(no_lat))["latency"] is None, "latency: log without the line -> None")
+it = _match_perf(FakeEngine(), folder(no_lat))
+check(it and "Game delay" not in it.why, "row: no latency line -> no game delay sentence")
+odd = HEAD + block(0, 24000, 120.0, 2.0, latency=0) + block(1, 20000, 100.0, 2.0, latency=4000)
+check(mp.summary(mp.parse_rounds(odd))["latency"] is None, "latency: 0 ms or absurd values ignored")
+part = HEAD + block(0, 24000, 120.0, 2.0, latency=None) + block(1, 20000, 100.0, 2.0, latency=7.0)
+check(mp.summary(mp.parse_rounds(part))["latency"] == 7.0, "latency: rounds without it are left out")
+
+# before vs after: latency on both sides (frame-weighted across matches)
+dl = Path(tempfile.mkdtemp(prefix="ts-mlat-"))
+(dl / "ShooterGame-backup-2026.11.10-10.00.00.log").write_text(
+    HEAD + block(0, 30000, 300.0, 2.0, stamp=at(10, 10, 5), latency=8.0)
+    + block(0, 60000, 600.0, 2.0, stamp=at(10, 11, 10), latency=6.5), encoding="utf-8")
+(dl / "ShooterGame.log").write_text(
+    HEAD + block(0, 66000, 600.0, 2.0, stamp=at(14, 20, 10), latency=5.5), encoding="utf-8")
+cl = mp.compare(mp.all_matches(dl), since)
+check(cl and abs(cl["latency_before"] - (8.0 * 30000 + 6.5 * 60000) / 90000) < 1e-9 and cl["latency_after"] == 5.5,
+      f"compare: latency before 7.0 -> after 5.5 ms ({cl})")
+it = _match_perf(FakeEngine(), dl, since=since)
+check(it and "Game delay since Optimize Max: 5.5 ms, before: 7.0 ms." in it.why, f"row: latency before/after ({it and it.why})")
+(dl / "ShooterGame.log").write_text(
+    HEAD + block(0, 66000, 600.0, 2.0, stamp=at(14, 20, 10), latency=None), encoding="utf-8")
+cl = mp.compare(mp.all_matches(dl), since)
+check(cl and cl["latency_after"] is None and cl["latency_before"] is not None, "compare: a side without latency -> None")
+it = _match_perf(FakeEngine(), dl, since=since)
+check(it and "Since Optimize Max" in it.why and "Game delay since" not in it.why,
+      "row: FPS comparison kept, latency comparison hidden when a side lacks it")
+check(mp._latency([]) is None, "latency average: nothing -> None")
 
 
 import truestretch.optimizer as opt                                            # noqa: E402
@@ -247,6 +288,8 @@ if real.is_dir():
               f"round, total memory consistent ({sorted(t * 64 for t in tot)} MB)")
         bucket_ok = [r for r in rs if r["buckets"] and sum(r["buckets"].values()) == int(r["frames"])]
         check(len(bucket_ok) == len(rs), f"real {path.name}: buckets add up to Total Frames in every round")
+        check(all(r.get("latency") and 0 < r["latency"] < 1000 for r in rs),
+              f"real {path.name}: engine latency line in every round")
     it = _match_perf(FakeEngine())
     check(it is None or it.id == "match_perf", "real scan step builds the row (or none)")
     allr = mp.all_matches(real)

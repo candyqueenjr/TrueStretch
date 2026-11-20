@@ -2,6 +2,15 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] — 2026-11-20
+
+### Optimize Max
+- **Who took the processor.** When the processor sets your FPS, the *Your last match* row now says how many of your
+  processor threads VALORANT itself kept busy on average and how many your other programs took (from the game's own
+  per-round statistics). If other programs took a thread or more, the row points to the Startup and Background
+  checks; if they took little, the processor's own speed is the limit and the power settings matter. Read-only;
+  hidden when the graphics card or the FPS limit sets the FPS, and on logs without the two lines.
+
 ## [1.8.0] — 2026-11-19
 
 ### Optimize Max

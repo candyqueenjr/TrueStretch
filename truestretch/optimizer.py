@@ -368,6 +368,9 @@ def _match_perf(engine, log_dir=None, since=None):
                        "Power settings, startup apps and background programs above matter most.",
                 "both": "Processor and graphics card are both close to their limit.",
                 "cap": "Your in-game FPS limit sets the FPS."}.get(kind, ""))
+    game_thr, other_thr, cpus = matchperf.cpu_split(info)
+    if kind in ("cpu", "both") and game_thr is not None and other_thr is not None:
+        why.append(_cpu_sentence(game_thr, other_thr, cpus))
     notes = []
     slow = info["slow_share"]
     if slow is not None and slow >= 0.01:
@@ -380,7 +383,9 @@ def _match_perf(engine, log_dir=None, since=None):
     debug = [f"{info['file']}: {info['rounds']} rounds, {info['minutes']:.1f} min, {fps:.1f} FPS, gpu busy "
              f"{busy if busy is None else round(busy, 3)}, slow {slow if slow is None else round(slow, 4)}, memory "
              f"{info['memory']}, hitches {info['hitches']}, limit {kind}, valorant MB {_mb(info['game_mb'])}, total MB "
-             f"{_mb(info['total_mb'])}, others MB {_mb(info['others_mb'])}, engine latency {_ms(info.get('latency'))}"]
+             f"{_mb(info['total_mb'])}, others MB {_mb(info['others_mb'])}, engine latency {_ms(info.get('latency'))}, "
+             f"cpu game {_ms(info.get('game_cpu'))}% sys {_ms(info.get('sys_cpu'))}% -> threads game {_ms(game_thr)} "
+             f"others {_ms(other_thr)} of {cpus}"]
     cmp = matchperf.compare(matchperf.all_matches(log_dir or LOG_DIR), since) if since and kind != "cap" else None
     if cmp:
         n_a, n_b = cmp["n_after"], cmp["n_before"]
@@ -396,6 +401,17 @@ def _match_perf(engine, log_dir=None, since=None):
     return Item("match_perf", "Your PC", f"Your last match: {fps:.0f} FPS average", " ".join(w for w in why if w),
                 f"{fps:.0f} FPS", f"{hz}+ FPS" if hz else "—", INFO, "More FPS", 2, note=" ".join(notes),
                 debug=debug)
+
+
+def _cpu_sentence(game, others, cpus):
+    """How the processor was shared during the match (from the game's own CPU lines), with what to do about it."""
+    text = (f"Of your {cpus} processor threads, VALORANT itself kept about {game:.1f} busy on average and your other "
+            f"programs about {others:.1f}.")
+    if others >= 1.0:
+        return text + (" That is processor time taken from the game: the Startup and Background checks above show "
+                       "what to close.")
+    return text + (" Other programs took little, so the processor's own speed sets your FPS - the power settings "
+                   "above keep it at full speed.")
 
 
 def _mb(v):

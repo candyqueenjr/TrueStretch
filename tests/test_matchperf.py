@@ -1,7 +1,7 @@
 """Optimize Max: "Your last match" reads VALORANT's own end-of-round performance statistics from ShooterGame.log.
 Crafted logs cover: one match (average FPS = frames / time, GPU-bound / CPU-bound / both, frames under 60 FPS from
 the buckets, memory, shader hitches, UTC -> local time; how much
-memory VALORANT itself used vs other programs), two matches in one file (the last one counts), the in-game
+memory VALORANT itself used vs other programs; processor threads VALORANT vs other programs kept busy), two matches in one file (the last one counts), the in-game
 FPS cap as the limit, a block cut off mid-way, a log without statistics, the fallback to the newest backup log, a
 missing folder; before vs after Optimize Max (matches split at Round 0, start times, de-duplicated across logs,
 time-weighted averages, a match running at apply time counts on neither side, too little play, the FPS-cap case, the
@@ -17,6 +17,9 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]
 
 from truestretch import matchperf as mp                                        # noqa: E402
 from truestretch.optimizer import INFO, UNDO_FILE, Optimizer, _match_perf   # noqa: E402
+import truestretch.optimizer as opt                                            # noqa: E402
+
+real_cap = opt._fps_cap
 
 fails = []
 
@@ -27,7 +30,7 @@ def check(c, t):
 
 
 def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11.12-09.51.52:665", game_mb=3275.90,
-          game_pct=None, latency=6.38):
+          game_pct=None, latency=6.38, game_cpu=399.13, sys_cpu=None):
     """One end-of-round block in the exact real layout (tabs, two continuation headers). `slow` frames go into the
     30-45 FPS bucket, the rest into 144-240."""
     ft = 1000.0 * secs / frames
@@ -41,8 +44,10 @@ def block(rnd, frames, secs, gpu, memory=80.0, hitches=0, slow=0, stamp="2026.11
             + (f"\t\tAvg. Engine Latency (ms): {latency}\r\n" if latency is not None else "")
             + "\t\tAvg. Work (ms): 4.83\r\n\t\tEngine Latency Frames Over 144fps: 10\r\n"
             f"[{stamp}][437]LogClientPerRoundTelemetryComponent: \r\n"
-            f"\t\tTotal Time(secs): {secs}\r\n\t\tValorant CPU Util(mean): 399.13\r\n"
-            f"\t\tSystem Memory Util(mean): {memory}\r\n\t\tGPU Time(mean): {gpu}\r\n"
+            f"\t\tTotal Time(secs): {secs}\r\n"
+            + (f"\t\tValorant CPU Util(mean): {game_cpu}\r\n" if game_cpu is not None else "")
+            + (f"\t\tSystem CPU Util(mean): {sys_cpu}\r\n" if sys_cpu is not None else "")
+            + f"\t\tSystem Memory Util(mean): {memory}\r\n\t\tGPU Time(mean): {gpu}\r\n"
             "\t\tGPU Frames Over 360fps: 20766\r\n"
             + (f"\t\tValorant Memory Util(mean): {game_pct}\r\n" if game_pct is not None else "")
             + (f"\t\tValorant Memory MB(mean): {game_mb}\r\n" if game_mb is not None else "")
@@ -232,6 +237,51 @@ check(mp.summary(mp.parse_rounds(odd))["latency"] is None, "latency: 0 ms or abs
 part = HEAD + block(0, 24000, 120.0, 2.0, latency=None) + block(1, 20000, 100.0, 2.0, latency=7.0)
 check(mp.summary(mp.parse_rounds(part))["latency"] == 7.0, "latency: rounds without it are left out")
 
+# ---- processor threads: VALORANT itself vs other programs (the game's own CPU lines) ---------------------------
+cpu_log2 = HEAD + block(0, 24000, 120.0, 2.0, game_cpu=400.0, sys_cpu=50.0) + block(1, 12000, 60.0, 2.0, game_cpu=100.0, sys_cpu=20.0)
+ci = mp.summary(mp.last_match(mp.parse_rounds(cpu_log2)))
+check(ci and abs(ci["game_cpu"] - 300.0) < 1e-9 and abs(ci["sys_cpu"] - 40.0) < 1e-9,
+      f"cpu: time-weighted means of both lines ({ci and (ci['game_cpu'], ci['sys_cpu'])})")
+g, o, n = mp.cpu_split(ci, cpus=8)
+check(n == 8 and abs(g - 3.0) < 1e-9 and abs(o - 0.2) < 1e-9, f"cpu split: 300% = 3.0 threads, 40% of 8 - 3.0 = 0.2 others ({g}, {o})")
+check(mp.cpu_split(ci, cpus=2) == (None, None, 2), "cpu split: VALORANT above the whole processor -> not this PC's log")
+low = mp.summary(mp.last_match(mp.parse_rounds(HEAD + block(0, 24000, 120.0, 2.0, game_cpu=400.0, sys_cpu=10.0))))
+check(mp.cpu_split(low, cpus=8) == (4.0, None, 8), "cpu split: system below VALORANT's own share -> others unknown")
+check(mp.cpu_split(mp.summary(mp.last_match(mp.parse_rounds(HEAD + block(0, 24000, 120.0, 2.0)))), cpus=8) == (None, None, 8),
+      "cpu split: log without the system line -> nothing")
+check(mp.cpu_split(ci, cpus=None)[2] == mp._cpus() and (mp._cpus() or 0) >= 1, "cpu split: thread count from this PC by default")
+check(mp.cpu_split(None, cpus=8) == (None, None, 8), "cpu split: no match -> nothing")
+odd_cpu = HEAD + block(0, 24000, 120.0, 2.0, game_cpu=-5.0, sys_cpu=50.0) + block(1, 24000, 120.0, 2.0, game_cpu=200.0, sys_cpu=140.0)
+check(mp.summary(mp.last_match(mp.parse_rounds(odd_cpu)))["game_cpu"] is None, "cpu: negative / >100% system values ignored")
+real_cpus = mp._cpus
+mp._cpus = lambda: 8
+try:
+    it = _match_perf(FakeEngine(), folder(HEAD + block(0, 24000, 120.0, 2.0, game_cpu=420.0, sys_cpu=45.0)))   # 45% of 8 = 3.6 < 4.2
+    check(it and "processor threads" not in it.why, "row: numbers that don't fit (system < game) -> no sentence")
+    it = _match_perf(FakeEngine(), folder(HEAD + block(0, 24000, 120.0, 2.0, game_cpu=420.0, sys_cpu=80.0)))
+    check(it and "Of your 8 processor threads, VALORANT itself kept about 4.2 busy on average and your other programs "
+          "about 2.2." in it.why and "what to close" in it.why, f"row: processor-limited, others >= 1 thread -> close them ({it and it.why})")
+    check(it and any("cpu game 420.0% sys 80.0% -> threads game 4.2 others 2.2 of 8" in x for x in it.debug), "cpu split in the diagnostics")
+    it = _match_perf(FakeEngine(), folder(HEAD + block(0, 24000, 120.0, 2.0, game_cpu=420.0, sys_cpu=55.0)))
+    check(it and "other programs about 0.2." in it.why and "processor's own speed sets your FPS" in it.why,
+          f"row: others under 1 thread -> the processor's speed ({it and it.why})")
+    opt._fps_cap = lambda engine: None
+    try:
+        it = _match_perf(FakeEngine(), folder(HEAD + block(0, 12000, 100.0, 5.8, game_cpu=420.0, sys_cpu=80.0)))   # ~70% busy
+        check(it and "processor threads" in it.why and "Processor and graphics card are both" in it.why, "row: 'both' verdict shows the split too")
+    finally:
+        opt._fps_cap = real_cap
+    it = _match_perf(FakeEngine(), folder(HEAD + block(0, 12000, 100.0, 7.9, game_cpu=420.0, sys_cpu=80.0)))
+    check(it and "processor threads" not in it.why, "row: graphics-card-limited -> no processor sentence")
+    opt._fps_cap = lambda engine: 200.0
+    try:
+        it = _match_perf(FakeEngine(), folder(HEAD + block(0, 24000, 120.0, 2.0, game_cpu=420.0, sys_cpu=80.0)))
+        check(it and "processor threads" not in it.why, "row: FPS at the cap -> no processor sentence")
+    finally:
+        opt._fps_cap = real_cap
+finally:
+    mp._cpus = real_cpus
+
 # before vs after: latency on both sides (frame-weighted across matches)
 dl = Path(tempfile.mkdtemp(prefix="ts-mlat-"))
 (dl / "ShooterGame-backup-2026.11.10-10.00.00.log").write_text(
@@ -254,8 +304,6 @@ check(it and "Since Optimize Max" in it.why and "Game delay since" not in it.why
 check(mp._latency([]) is None, "latency average: nothing -> None")
 
 
-import truestretch.optimizer as opt                                            # noqa: E402
-real_cap = opt._fps_cap
 opt._fps_cap = lambda engine: 110.0
 try:
     it = _match_perf(FakeEngine(), d, since=since)
@@ -290,6 +338,10 @@ if real.is_dir():
         check(len(bucket_ok) == len(rs), f"real {path.name}: buckets add up to Total Frames in every round")
         check(all(r.get("latency") and 0 < r["latency"] < 1000 for r in rs),
               f"real {path.name}: engine latency line in every round")
+        ncpu = mp._cpus() or 0
+        check(all(r.get("game_cpu") is not None and r.get("sys_cpu") is not None
+                  and r["game_cpu"] <= ncpu * r["sys_cpu"] + 1e-6 for r in rs),
+              f"real {path.name}: both CPU lines in every round, VALORANT's share never above {ncpu} threads x system %")
     it = _match_perf(FakeEngine())
     check(it is None or it.id == "match_perf", "real scan step builds the row (or none)")
     allr = mp.all_matches(real)

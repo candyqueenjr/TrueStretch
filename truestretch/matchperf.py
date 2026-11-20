@@ -19,6 +19,8 @@ At the end of every round VALORANT writes a statistics block into
             Avg. Slack (ms): 1.14
     ...LogClientPerRoundTelemetryComponent:
             Total Time(secs): 129.89
+            Valorant CPU Util(mean): 429.70         <- % of ONE processor thread, summed over threads (430 = 4.3 threads)
+            System CPU Util(mean): 56.23            <- % of ALL threads in use (every program; always >= VALORANT's share)
             System Memory Util(mean): 82.89         <- % of the PC's memory in use (all programs)
             Valorant Memory Util(mean): 14.05       <- % of the PC's memory VALORANT itself used
             Valorant Memory MB(mean): 2251.27       <- the same in MB (MB / % = the PC's total memory)
@@ -27,8 +29,10 @@ At the end of every round VALORANT writes a statistics block into
 
 Rounds are numbered from 0 in every match, so "Round 0" starts a new match. The timestamp in brackets is UTC.
 Format verified on real logs, release-13.09 and release-13.10, 2026-11-12 (the VALORANT memory lines
-2026-11-18, the engine latency line 2026-11-19). Read only."""
+2026-11-18, the engine latency line 2026-11-19, the two CPU lines 2026-11-20 - VALORANT's figure never exceeded
+thread count x the system figure on 395 real rounds). Read only."""
 
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -85,7 +89,8 @@ def parse_rounds(text):
         key = {"Avg.Frametime (ms)": "frametime", "Total Frames": "frames", "Total Time(secs)": "secs",
                "GPU Time(mean)": "gpu", "System Memory Util(mean)": "memory", "Runtime PSO Hitches": "hitches",
                "Valorant Memory MB(mean)": "game_mb", "Valorant Memory Util(mean)": "game_pct",
-               "Avg. Engine Latency (ms)": "latency"}.get(name)
+               "Avg. Engine Latency (ms)": "latency", "Valorant CPU Util(mean)": "game_cpu",
+               "System CPU Util(mean)": "sys_cpu"}.get(name)
         if key:
             cur[key] = value
     if cur is not None and cur["round"] is not None:
@@ -113,7 +118,9 @@ def summary(match):
     """{"fps", "rounds", "minutes", "gpu_busy" (0..1 | None), "slow_share" (frames under 60 FPS, 0..1 | None),
     "memory" (% | None), "hitches", "ended", "started", and from the round where memory was fullest: "game_mb"
     (MB VALORANT itself used | None), "total_mb" (the PC's memory | None), "others_mb" (everything else | None),
-    "latency" (VALORANT's average engine latency in ms, weighted by frames | None)} for one match, or None."""
+    "latency" (VALORANT's average engine latency in ms, weighted by frames | None), "game_cpu" (% of one processor
+    thread VALORANT used, summed over threads, weighted by time | None), "sys_cpu" (% of all threads every program
+    used | None)} for one match, or None."""
     if not match:
         return None
     frames = sum(r["frames"] for r in match)
@@ -133,12 +140,45 @@ def summary(match):
     game_mb, total_mb, others_mb = _memory_split(peak)
     lat = [r for r in match if r.get("latency") is not None and 0 < r["latency"] < 1000]
     latency = sum(r["latency"] * r["frames"] for r in lat) / sum(r["frames"] for r in lat) if lat else None
+    game_cpu, sys_cpu = _cpu_means(match)
     return {"fps": frames / secs, "rounds": len(match), "minutes": secs / 60.0,
             "gpu_busy": min(1.0, gpu_ms / frame_ms) if gpu_ms is not None and frame_ms > 0 else None,
             "slow_share": slow, "memory": max(mem) if mem else None,
             "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"],
             "started": _started(match[0]), "game_mb": game_mb, "total_mb": total_mb, "others_mb": others_mb,
-            "latency": latency}
+            "latency": latency, "game_cpu": game_cpu, "sys_cpu": sys_cpu}
+
+
+def _cpu_means(match):
+    """Time-weighted means of the two CPU lines over the rounds that have both with plausible values, else None."""
+    rows = [r for r in match if r.get("game_cpu") is not None and r.get("sys_cpu") is not None
+            and r["game_cpu"] >= 0 and 0 <= r["sys_cpu"] <= 100 and r["secs"] > 0]
+    if not rows:
+        return None, None
+    secs = sum(r["secs"] for r in rows)
+    return (sum(r["game_cpu"] * r["secs"] for r in rows) / secs, sum(r["sys_cpu"] * r["secs"] for r in rows) / secs)
+
+
+def _cpus():
+    try:
+        return os.cpu_count() or None
+    except Exception:
+        return None
+
+
+def cpu_split(info, cpus=None):
+    """(threads VALORANT itself kept busy on average, threads every other program kept busy, the PC's thread count)
+    for a match summary; each None when unknown or when the numbers don't fit the PC (the logs are written by this
+    PC, so its thread count applies). VALORANT's line is % of one thread summed over threads; the system line is %
+    of all threads, so others = system % x threads - VALORANT's threads."""
+    cpus = cpus or _cpus()
+    if not info or not cpus or info.get("game_cpu") is None or info.get("sys_cpu") is None:
+        return None, None, cpus
+    game = info["game_cpu"] / 100.0
+    if game > cpus:                                           # more than the whole processor: not this PC's log
+        return None, None, cpus
+    others = info["sys_cpu"] / 100.0 * cpus - game
+    return game, (others if others >= 0 else None), cpus
 
 
 def _memory_split(r):
@@ -257,4 +297,5 @@ def compare(matches, since, keep=COMPARE_KEEP, min_minutes=COMPARE_MIN_MINUTES):
             "latency_before": _latency(before), "latency_after": _latency(after)}
 
 
-__all__ = ["parse_rounds", "last_match", "split_matches", "summary", "limit", "latest", "all_matches", "compare"]
+__all__ = ["parse_rounds", "last_match", "split_matches", "summary", "limit", "latest", "all_matches", "compare",
+           "cpu_split"]

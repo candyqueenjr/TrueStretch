@@ -2,6 +2,14 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] — 2026-11-21
+
+### Optimize Max
+- **Vignette and Improve Clarity are read for real.** The two *Inside VALORANT* rows that used to say "Set in game"
+  now read their values (`VignetteEnabled`, `ImproveClarity`) from the account settings file like the other rows:
+  Off is marked as done, On points to VALORANT → Settings → Video → Graphics Quality, and a setting you never touched
+  shows "Game default". Read-only, as before: these live in your Riot account, so only the game can change them.
+
 ## [1.9.0] — 2026-11-20
 
 ### Optimize Max

@@ -8,7 +8,9 @@ means the game default. The file is uploaded to the account when the game saves,
 it would be overwritten by the cloud copy); the Optimize Max rows show the real value and where to change it in game.
 
 Key names and values were taken from real files on several accounts (2026-11-08, release-13.09) and match the public
-configs players share (e.g. https://gist.github.com/tioxy/95b7bb70986431dbc4d844bdfc9a90b2)."""
+configs players share (e.g. https://gist.github.com/tioxy/95b7bb70986431dbc4d844bdfc9a90b2). `VignetteEnabled` and
+`ImproveClarity` (never changed on those accounts) come from two independent public configs that agree on the names
+(https://github.com/JoShMiQueL/VALORANT-CONFIG/blob/main/RiotUserSettings.ini, https://pastebin.com/Ckw13EUe)."""
 
 from pathlib import Path
 
@@ -38,7 +40,10 @@ def read(path, keys):
 
 
 def _bool(raw):
-    return None if raw is None else raw.strip().lower() == "true"
+    """True / False for the game's 'True' / 'False' (any case); None for a missing or garbled value - an unreadable
+    value is never shown as a setting that is fine."""
+    text = (raw or "").strip().lower()
+    return True if text == "true" else False if text == "false" else None
 
 
 def _num(raw):
@@ -74,16 +79,16 @@ SPECS = [
      lambda v: v[0] == "0", "Removes extra scenery that can hide enemies.", WHERE_GQ, 2),
     ("ui", "UI Quality", [INT + "UIQuality"], lambda v: _named(QUALITY, str)(v[0]), "Low",
      lambda v: v[0] == "0", "Cheaper menus and HUD - no visible downside.", WHERE_GQ, 1),
-    ("vignette", "Vignette", [], lambda v: None, "Off", lambda v: False,
-     "Darkens screen edges - removes visibility.", WHERE_GQ, 1),
+    ("vignette", "Vignette", [BOOL + "VignetteEnabled"], lambda v: _on_off(False)(v[0]), "Off",
+     lambda v: _bool(v[0]) is False, "Darkens screen edges - removes visibility.", WHERE_GQ, 1),
     ("aa", "Anti-Aliasing", [INT + "AntiAliasing"],
      lambda v: None if v[0] is None else ("None" if v[0] == "0" else "On"), "None or MSAA 2x",
      lambda v: v[0] == "0", "MSAA 4x costs many FPS.", WHERE_GQ, 2),
     ("af", "Anisotropic Filtering", [INT + "AnisotropicFiltering"],
      lambda v: None if v[0] is None else f"{v[0]}x", "1x or 2x", lambda v: v[0] in ("1", "2"),
      "Higher values cost FPS for detail you won't notice.", WHERE_GQ, 1),
-    ("clarity", "Improve Clarity", [], lambda v: None, "Off", lambda v: False,
-     "Sharpening effect with a small FPS cost.", WHERE_GQ, 1),
+    ("clarity", "Improve Clarity", [BOOL + "ImproveClarity"], lambda v: _on_off(False)(v[0]), "Off",
+     lambda v: _bool(v[0]) is False, "Sharpening effect with a small FPS cost.", WHERE_GQ, 1),
     ("bloom", "Bloom", [INT + "BloomQuality"],
      lambda v: None if v[0] is None else ("Off" if v[0] == "0" else "On"), "Off", lambda v: v[0] == "0",
      "Glow around bright lights - hides enemies standing near them.", WHERE_GQ, 1),

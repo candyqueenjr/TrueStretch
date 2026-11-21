@@ -42,15 +42,17 @@ TUNED = ["EAresIntSettingName::NvidiaReflexLowLatencySetting=2", "EAresBoolSetti
          "EAresIntSettingName::DetailQuality=0", "EAresIntSettingName::UIQuality=0", "EAresIntSettingName::AntiAliasing=0",
          "EAresIntSettingName::AnisotropicFiltering=1", "EAresIntSettingName::BloomQuality=0",
          "EAresBoolSettingName::DisableDistortion=True", "EAresBoolSettingName::ShadowsEnabled=False",
+         "EAresBoolSettingName::VignetteEnabled=False", "EAresBoolSettingName::ImproveClarity=False",
          "EAresBoolSettingName::LimitFramerateAlways=False", "EAresStringSettingName::CrosshairProfileName=x"]
 UNTUNED = ["EAresIntSettingName::NvidiaReflexLowLatencySetting=1", "EAresBoolSettingName::MultithreadedRenderingEnabled=False",
            "EAresIntSettingName::MaterialQuality=2", "EAresIntSettingName::TextureQuality=1",
            "EAresIntSettingName::DetailQuality=2", "EAresIntSettingName::UIQuality=1", "EAresIntSettingName::AntiAliasing=3",
            "EAresIntSettingName::AnisotropicFiltering=16", "EAresIntSettingName::BloomQuality=1",
            "EAresBoolSettingName::DisableDistortion=False", "EAresBoolSettingName::ShadowsEnabled=True",
+           "EAresBoolSettingName::VignetteEnabled=True", "EAresBoolSettingName::ImproveClarity=True",
            "EAresBoolSettingName::LimitFramerateAlways=True", "EAresFloatSettingName::MaxFramerateAlways=60.000000"]
 READ = {"reflex", "multithread", "material", "texture", "detail", "ui", "aa", "af", "bloom", "distortion", "shadows",
-        "fps_limit"}
+        "vignette", "clarity", "fps_limit"}
 
 gus = account("11111111-2222-3333-4444-555555555555-eu", TUNED)
 riot = rs.riot_settings_path(gus)
@@ -60,8 +62,9 @@ check(len(items) == 14, f"14 rows ({len(items)})")
 check(all(items[f"ingame_{k}"].state == DONE for k in READ), "tuned account: every readable setting is Optimized")
 check(items["ingame_reflex"].current == "On + Boost" and items["ingame_af"].current == "1x"
       and items["ingame_fps_limit"].current == "Off", "tuned account: values shown in plain words")
-check(items["ingame_vignette"].state == IN_GAME and items["ingame_vignette"].current == "Set in game"
-      and items["ingame_clarity"].state == IN_GAME, "Vignette / Improve Clarity (no known key) stay manual")
+check(items["ingame_vignette"].current == "Off" and items["ingame_clarity"].current == "Off",
+      "Vignette / Improve Clarity are read from VignetteEnabled / ImproveClarity")
+check(not any(i.current == "Set in game" for i in items.values()), "every row has a real key now")
 check(all("Account 1111" in i.note and "VALORANT \u2192 Settings \u2192 Video" in i.note for i in items.values()),
       "every row says which account it was read from and where to change it")
 check(not any(i.can_apply for i in items.values()), "nothing is applicable - read-only")
@@ -69,8 +72,8 @@ check(not any(i.can_apply for i in items.values()), "nothing is applicable - rea
 items = by_id(rs.ingame_items(rs.riot_settings_path(account("a", UNTUNED)), 144))
 check(all(items[f"ingame_{k}"].state == IN_GAME for k in READ), "untuned account: every readable setting needs changing")
 want = {"reflex": "On", "multithread": "Off", "material": "High", "texture": "Medium", "detail": "High", "ui": "Medium",
-        "aa": "On", "af": "16x", "bloom": "On", "distortion": "On", "shadows": "On",
-        "fps_limit": "60 FPS cap (screen: 144 Hz)"}
+        "aa": "On", "af": "16x", "bloom": "On", "distortion": "On", "shadows": "On", "vignette": "On",
+        "clarity": "On", "fps_limit": "60 FPS cap (screen: 144 Hz)"}
 bad = {k: items[f"ingame_{k}"].current for k, v in want.items() if items[f"ingame_{k}"].current != v}
 check(not bad, f"untuned account: current values decoded ({bad or 'all as expected'})")
 check(items["ingame_fps_limit"].target == "Off, or at least 144 FPS", "FPS limit target names the refresh rate")
@@ -79,7 +82,16 @@ check(any("MultithreadedRenderingEnabled = 'False'" in d for d in items["ingame_
 
 items = by_id(rs.ingame_items(rs.riot_settings_path(account("b", [])), 144))
 check(all(i.state == IN_GAME for i in items.values()) and items["ingame_reflex"].current == rs.GAME_DEFAULT
+      and items["ingame_vignette"].current == rs.GAME_DEFAULT and items["ingame_clarity"].current == rs.GAME_DEFAULT
       and items["ingame_fps_limit"].current == rs.GAME_DEFAULT, "fresh account (no keys): game defaults, nothing claimed")
+# a half-typed or odd value is never read as Off
+items = by_id(rs.ingame_items(rs.riot_settings_path(account("d", ["EAresBoolSettingName::VignetteEnabled=maybe",
+                                                                  "EAresBoolSettingName::ImproveClarity=TRUE"])), 144))
+check(items["ingame_vignette"].state == IN_GAME and items["ingame_vignette"].current == rs.GAME_DEFAULT
+      and items["ingame_clarity"].state == IN_GAME and items["ingame_clarity"].current == "On",
+      "garbled value: not claimed either way; 'TRUE' still reads as On")
+check(rs.fps_limit({"EAresBoolSettingName::LimitFramerateAlways": "yes"}, 144) == (None, True),
+      "garbled FPS-limit flag: nothing claimed")
 items = by_id(rs.ingame_items(rs.riot_settings_path(account("c", None)), None))
 check(len(items) == 14 and all(i.state == IN_GAME for i in items.values()), "missing file: 14 manual rows, no crash")
 items = by_id(rs.ingame_items(None))

@@ -7,6 +7,7 @@ from ..paths import resource_path
 from ..system import system_prefers_dark
 
 CHECK = resource_path("assets/check.svg").as_posix()
+CHECK_DARK = resource_path("assets/check-dark.svg").as_posix()
 CHEVRON = resource_path("assets/chevron-down.svg").as_posix()
 
 BODY = "Barlow"
@@ -14,15 +15,15 @@ DISPLAY = "Barlow Condensed"
 
 DARK = {
     "bg": "#0f1923", "sidebar": "#0a1219", "surface": "#13202c", "surface2": "#192836", "surface3": "#223444",
-    "border": "#223140", "border_strong": "#34495c", "text": "#ece8e1", "muted": "#8f9ba6", "faint": "#5b6b79",
+    "border": "#223140", "border_strong": "#34495c", "text": "#ece8e1", "muted": "#97a3ad", "faint": "#7d8b97",
     "accent": "#ff4655", "accent_hover": "#ff5b69", "accent_text": "#ffffff",
-    "success": "#3ee0b9", "warning": "#f3c552", "danger": "#ff6a6a", "info": "#7cc4ff", "dark": True,
+    "success": "#3ee0b9", "warning": "#f3c552", "danger": "#ff8a5c", "info": "#7cc4ff", "dark": True,
 }
 LIGHT = {
     "bg": "#ece8e1", "sidebar": "#e3ded5", "surface": "#f6f3ee", "surface2": "#ebe6de", "surface3": "#ddd7cc",
-    "border": "#d3ccc0", "border_strong": "#b9b0a2", "text": "#0f1923", "muted": "#4f5b66", "faint": "#8a929a",
+    "border": "#d3ccc0", "border_strong": "#b9b0a2", "text": "#0f1923", "muted": "#4a5561", "faint": "#68717a",
     "accent": "#e8303f", "accent_hover": "#ff4655", "accent_text": "#ffffff",
-    "success": "#0f9f7f", "warning": "#a86b00", "danger": "#c62832", "info": "#1f6fb8", "dark": False,
+    "success": "#0b7a61", "warning": "#8a5800", "danger": "#b8401a", "info": "#1f6fb8", "dark": False,
 }
 
 _current = DARK
@@ -150,8 +151,12 @@ def stylesheet(p=None):
     QPushButton#Danger:hover {{ border-color:{p['danger']}; background:{rgba(p['danger'], 0.08)}; }}
     QPushButton#Ghost {{ background:transparent; border:none; color:{p['muted']}; padding:6px 10px; }}
     QPushButton#Ghost:hover {{ color:{p['text']}; }}
-    QPushButton#Link {{ background:transparent; border:none; color:{p['accent']}; padding:0; }}
-    QPushButton#Link:hover {{ color:{p['accent_hover']}; }}
+    QPushButton#Link {{ background:transparent; border:none; color:{p['text']}; padding:0; text-decoration:underline; }}
+    QPushButton#Link:hover {{ color:{p['accent']}; }}
+    QPushButton#Subtle {{ background:transparent; border:none; color:{p['muted']}; padding:0; }}
+    QPushButton#Subtle:hover {{ color:{p['text']}; }}
+    QPushButton[kbfocus="true"] {{ border:1px solid {p['info']}; }}
+    QTreeWidget:focus, QPlainTextEdit:focus {{ border-color:{p['border_strong']}; }}
 
     #Segmented {{ background:transparent; border:1px solid {p['border_strong']}; border-radius:0; }}
     QPushButton#Segment {{ background:transparent; border:none; border-radius:0; padding:6px 14px;
@@ -186,8 +191,10 @@ def stylesheet(p=None):
         font-size:9pt; }}
     QTreeWidget::indicator, QCheckBox::indicator {{ width:15px; height:15px; border-radius:0;
         border:1px solid {p['border_strong']}; background:transparent; }}
-    QTreeWidget::indicator:checked, QCheckBox::indicator:checked {{ background:{p['accent']};
-        border-color:{p['accent']}; image:url("{CHECK}"); }}
+    QTreeWidget::indicator:checked, QCheckBox::indicator:checked {{ background:{p['text']};
+        border-color:{p['text']}; image:url("{CHECK_DARK if p['dark'] else CHECK}"); }}
+    QTreeWidget::indicator:hover, QCheckBox::indicator:hover {{ border-color:{p['text']}; }}
+    QCheckBox[kbfocus="true"]::indicator {{ border:1px solid {p['info']}; }}
     QCheckBox {{ spacing:8px; }}
 
     QProgressBar {{ background:{p['surface2']}; border:none; border-radius:0; max-height:4px; }}
@@ -205,7 +212,7 @@ def stylesheet(p=None):
         padding:6px 8px; border-radius:0; }}
     QMenu {{ background:{p['surface']}; border:1px solid {p['border_strong']}; padding:4px; border-radius:0; }}
     QMenu::item {{ padding:7px 22px 7px 12px; }}
-    QMenu::item:selected {{ background:{rgba(p['accent'], 0.14)}; }}
+    QMenu::item:selected {{ background:{rgba(p['text'], 0.10)}; }}
     QMenu::separator {{ height:1px; background:{p['border']}; margin:4px 6px; }}
     QMessageBox QLabel {{ min-width:320px; }}
     #Toast {{ background:{p['surface2']}; border:1px solid {p['border_strong']}; border-left:3px solid {p['accent']};

@@ -59,6 +59,35 @@ def running_processes():
     return names
 
 
+def process_paths(exe_name):
+    """Full program-file paths of every running process called exe_name (case-insensitive), e.g. every copy of
+    TrueStretch.exe and the unpack folder each one really runs from. Processes we may not query are skipped."""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    paths = []
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snap or snap == INVALID_HANDLE_VALUE:
+        return paths
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            if entry.szExeFile.lower() == exe_name.lower():
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, entry.th32ProcessID)
+                if handle:
+                    try:
+                        buf = ctypes.create_unicode_buffer(32768)
+                        size = wintypes.DWORD(len(buf))
+                        if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)) and size.value:
+                            paths.append(Path(buf.value))
+                    finally:
+                        kernel32.CloseHandle(handle)
+            ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snap)
+    return paths
+
+
 def fixed_drives():
     """Local hard drives, e.g. ['C:\\', 'D:\\']."""
     mask = kernel32.GetLogicalDrives()

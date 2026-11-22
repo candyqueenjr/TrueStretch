@@ -49,6 +49,17 @@ fails = []
 def check(c, t):
     print(("PASS " if c else "FAIL ") + t); c or fails.append(t)
 
+# The compiled app unpacks into %LOCALAPPDATA%\TrueStretch\<version> and must delete OTHER versions' folders at
+# start - but never one another running copy still uses. Two fake version folders stand in for both cases.
+cache = Path(os.environ["LOCALAPPDATA"]) / "TrueStretch"
+stale, busy = cache / "0.0.1.0", cache / "0.0.2.0"
+for folder in (stale, busy):
+    (folder / "PySide6").mkdir(parents=True, exist_ok=True)
+    (folder / "TrueStretch.exe").write_bytes(b"MZ")
+    (folder / "PySide6" / "Qt6Core.dll").write_bytes(b"x")
+import ctypes
+busy_handle = ctypes.windll.kernel32.CreateFileW(str(busy / "TrueStretch.exe"), 0x80000000, 0, None, 3, 0, None)
+
 try:
     t0 = time.time()
     rc = subprocess.run([str(exe), "--update"], env=env, timeout=180).returncode
@@ -71,11 +82,25 @@ try:
         time.sleep(1)
     check(not (app_dir / "TrueStretch.old.exe").exists(), "old version cleaned up")
     check(sorted(p.name for p in app_dir.iterdir()) == ["TrueStretch.exe"], f"folder is clean: {sorted(p.name for p in app_dir.iterdir())}")
+    for _ in range(30):
+        if not stale.exists():
+            break
+        time.sleep(1)
+    check(not stale.exists(), "older version's unpack folder in %LOCALAPPDATA%\\TrueStretch removed by the new version")
+    check((busy / "PySide6" / "Qt6Core.dll").exists(), "unpack folder another running copy uses was left alone")
+    running = [l for l in procs() if "--updated" in l]
+    own = [l.split("|")[1] for l in running]
+    inner = [p for p in own if str(cache).lower() in p.lower()]      # the outer exe is the launcher, the inner one is the app
+    check(inner, f"updated copy runs from the cache: {own}")
+    check(inner and all(Path(p).parent.is_dir() for p in inner), "its own unpack folder survived the cleanup")
 finally:
     for line in procs():
         pid = line.split("|", 1)[0]
         subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
     srv.shutdown()
     time.sleep(2)
+    ctypes.windll.kernel32.CloseHandle(busy_handle)
+    shutil.rmtree(stale, ignore_errors=True)
+    shutil.rmtree(busy, ignore_errors=True)
     shutil.rmtree(TMP, ignore_errors=True)
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")

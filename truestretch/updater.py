@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import APP_NAME, VERSION
 from .paths import is_frozen, log
-from .system import launch_command
+from .system import launch_command, process_paths
 
 REPO = "candyqueenjr/TrueStretch"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
@@ -244,13 +244,85 @@ def cleanup_after_update():
             pass
     # The .exe unpacks itself once per version into %LOCALAPPDATA%\TrueStretch\<version> (not Temp - Windows
     # Defender's machine learning flags programs launched from Temp). Remove older versions' folders.
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        removed = remove_old_versions(Path(local) / APP_NAME, running_image().parent)
+        if removed:
+            log.info("Removed %d older unpack folder(s): %s", len(removed), ", ".join(f.name for f in removed))
+
+
+VERSION_FOLDER = re.compile(r"\d+(\.\d+){1,3}")
+
+
+def running_image():
+    """The program file this process really runs from. For the one-file .exe that is the unpacked copy in
+    %LOCALAPPDATA%\\TrueStretch\\<version>\\ - NOT sys.executable / sys.argv[0], which Nuitka points at the outer
+    TrueStretch.exe the player double-clicked (that is what launch_command() wants, and why the old cleanup that
+    compared sys.executable's folder with the cache never deleted anything)."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        n = ctypes.windll.kernel32.GetModuleFileNameW(None, buf, len(buf))
+        if 0 < n < len(buf):
+            return Path(buf.value)
+    except (AttributeError, OSError):
+        pass
+    return Path(sys.executable)
+
+
+def _inside(path, folder):
+    return os.path.normcase(str(path)).startswith(os.path.normcase(str(folder)).rstrip("\\") + "\\")
+
+
+def in_use(folder, images=None):
+    """True when a TrueStretch is still running from that unpack folder. Two independent checks: a running copy's
+    program file is inside the folder (images = process_paths(ASSET_NAME), looked up if not given), and Windows
+    refuses to open a running program file for writing. Either one means 'leave it alone'."""
+    folder = Path(folder)
+    if images is None:
+        images = process_paths(ASSET_NAME)
+    if any(_inside(p, folder) for p in images):
+        return True
+    exe = folder / ASSET_NAME
+    if not exe.is_file():
+        return False
+    try:
+        with open(exe, "r+b"):
+            return False
+    except OSError:
+        return True
+
+
+def _remove_version_folder(folder):
+    """The program file goes first: Windows can't delete a running program, so a copy we somehow missed stops the
+    whole removal before anything else in its folder is touched. Returns True when the folder is gone."""
     import shutil
-    current = Path(sys.executable).resolve().parent
-    cache = Path(os.environ.get("LOCALAPPDATA", "")) / APP_NAME
-    if cache.is_dir() and current.parent == cache:
-        for folder in cache.iterdir():
-            if folder.is_dir() and folder != current and re.fullmatch(r"\d+(\.\d+){1,3}", folder.name):
-                shutil.rmtree(folder, ignore_errors=True)
+    exe = folder / ASSET_NAME
+    try:
+        exe.unlink(missing_ok=True)
+    except OSError:
+        return False
+    shutil.rmtree(folder, ignore_errors=True)
+    return not folder.exists()
+
+
+def remove_old_versions(cache, current):
+    """Deletes the other versions' unpack folders inside cache (%LOCALAPPDATA%\\TrueStretch), keeping the folder
+    this process runs from (current) and any folder another running copy still uses. Only acts when current really
+    is a version folder inside cache. Returns the folders that are gone."""
+    cache, current = Path(cache), Path(current)
+    removed = []
+    if not cache.is_dir() or os.path.normcase(str(current.parent)) != os.path.normcase(str(cache)):
+        return removed
+    images = process_paths(ASSET_NAME)
+    for folder in cache.iterdir():
+        if not (folder.is_dir() and VERSION_FOLDER.fullmatch(folder.name)):
+            continue
+        if os.path.normcase(str(folder)) == os.path.normcase(str(current)) or in_use(folder, images):
+            continue
+        if _remove_version_folder(folder):
+            removed.append(folder)
+    return removed
 
 
 def wait_for_pid(pid, seconds=20):

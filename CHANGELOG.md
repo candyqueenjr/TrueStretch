@@ -2,6 +2,17 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.10.1] — 2026-11-22
+
+### Fixed
+- **Old versions' unpack folders are now really deleted.** The one-file TrueStretch.exe unpacks itself once per
+  version into `%LOCALAPPDATA%\TrueStretch\<version>` (about 80 MB each). The clean-up that was meant to remove the
+  previous versions after an update compared the wrong path (the TrueStretch.exe you double-click instead of the
+  unpacked copy that actually runs), so it never removed anything and every version you ever ran stayed on the
+  drive. The app now finds the folder it really runs from, deletes the other version folders at every start, and
+  leaves a folder alone while another copy of TrueStretch is still running from it (it goes at the next start).
+  Settings, backups and logs are in a different place and are not touched.
+
 ## [1.10.0] — 2026-11-21
 
 ### Optimize Max

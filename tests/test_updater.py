@@ -90,6 +90,56 @@ try:
 except updater.UpdateError:
     check(True, "offline -> quiet UpdateError (no crash)")
 
+
+# Unpack-folder cleanup (%LOCALAPPDATA%\TrueStretch\<version>): other versions go, the running one and any folder
+# another running copy still uses stay, nothing outside version folders is touched.
+image = updater.running_image()
+check(image.is_file() and image.name.lower() in ("python.exe", "pythonw.exe"),
+      f"running_image() is this process's program file ({image.name}; a venv launcher runs the base python.exe)")
+cache = TMP / "cache"
+current = cache / "1.2.0.0"
+busy = cache / "1.0.0.0"
+for name in ("1.1.1.0", "1.2.0.0", "1.3.0", "1.0.0.0", "9", "logs", "1.2.0.0.bak"):
+    (cache / name).mkdir(parents=True)
+    (cache / name / "TrueStretch.exe").write_bytes(b"MZ")
+    (cache / name / "PySide6").mkdir()
+    (cache / name / "PySide6" / "Qt6Core.dll").write_bytes(b"x")
+(cache / "notes.txt").write_text("keep")
+import ctypes
+GENERIC_READ, OPEN_EXISTING, INVALID = 0x80000000, 3, ctypes.c_void_p(-1).value
+handle = ctypes.windll.kernel32.CreateFileW(str(busy / "TrueStretch.exe"), GENERIC_READ, 0, None, OPEN_EXISTING, 0, None)
+check(handle not in (None, INVALID), "exclusive handle held on the 'busy' folder's exe (like a running copy)")
+check(updater.in_use(busy) and not updater.in_use(cache / "1.1.1.0") and not updater.in_use(cache / "logs"),
+      "in_use(): locked exe = in use; free exe / no exe = not in use")
+from truestretch.system import process_paths
+mine = process_paths(Path(sys.executable).name)
+check(any(p.resolve() == image.resolve() for p in mine), f"process_paths() lists this process's program file ({len(mine)} python processes)")
+check(updater.in_use(cache / "1.3.0", images=[cache / "1.3.0" / "TrueStretch.exe"]), "in_use(): a running copy's program file inside the folder = in use")
+check(not updater.in_use(cache / "1.3.0", images=[cache / "1.3.0.1" / "TrueStretch.exe", cache / "1.3" / "x.exe"]),
+      "in_use(): a copy running from a folder with a similar name doesn't count")
+check(updater.in_use(cache / "1.1.1.0", images=[str(cache / "1.1.1.0" / "TrueStretch.exe").upper()]) is True, "in_use(): path case ignored")
+# the program file is deleted first, so a copy we somehow missed stops the removal before its other files are touched
+import tempfile as _tf
+held = cache / "1.3.0" / "held"
+held.mkdir()
+h2 = ctypes.windll.kernel32.CreateFileW(str(cache / "1.3.0" / "TrueStretch.exe"), 0x80000000, 0, None, 3, 0, None)
+check(not updater._remove_version_folder(cache / "1.3.0") and (cache / "1.3.0" / "PySide6" / "Qt6Core.dll").exists(),
+      "locked program file -> folder left completely intact")
+ctypes.windll.kernel32.CloseHandle(h2)
+del _tf
+check(updater.remove_old_versions(cache, TMP / "elsewhere" / "1.2.0.0") == [], "current outside the cache -> nothing removed")
+check(updater.remove_old_versions(TMP / "missing", (TMP / "missing") / "1.2.0.0") == [], "missing cache -> nothing removed")
+check(sorted(p.name for p in cache.iterdir()) == ["1.0.0.0", "1.1.1.0", "1.2.0.0", "1.2.0.0.bak", "1.3.0", "9", "logs", "notes.txt"],
+      "nothing deleted by the refused calls")
+gone = updater.remove_old_versions(cache, current)
+check(sorted(f.name for f in gone) == ["1.1.1.0", "1.3.0"], f"other versions removed: {sorted(f.name for f in gone)}")
+check(sorted(p.name for p in cache.iterdir()) == ["1.0.0.0", "1.2.0.0", "1.2.0.0.bak", "9", "logs", "notes.txt"],
+      f"kept: current, in-use, non-version folders, files: {sorted(p.name for p in cache.iterdir())}")
+check((current / "PySide6" / "Qt6Core.dll").exists() and (busy / "PySide6" / "Qt6Core.dll").exists(), "kept folders intact")
+check(updater.remove_old_versions(str(cache).upper(), str(current).lower()) == [], "case-insensitive paths, second run: nothing left to remove")
+ctypes.windll.kernel32.CloseHandle(handle)
+check(updater.remove_old_versions(cache, current) == [busy], "once that copy has exited its folder goes too")
+
 srv.shutdown()
 shutil.rmtree(TMP, ignore_errors=True)
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")

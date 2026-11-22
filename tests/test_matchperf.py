@@ -320,7 +320,7 @@ UNDO_FILE.write_text('{"a": {"time": "2026-11-14T20:00:00"}, "b": {"time": "2026
 check(o.applied_since() == datetime(2026, 11, 12, 9, 0), "applied_since: oldest valid time, bad entries skipped")
 UNDO_FILE.write_text("not json", encoding="utf-8")
 check(o.applied_since() is None, "applied_since: broken undo file -> None")
-UNDO_FILE.unlink()
+UNDO_FILE.unlink(missing_ok=True)   # a damaged file is moved aside as .broken.json since 2.0
 
 real = Path(os.environ.get("LOCALAPPDATA", "")) / "VALORANT" / "Saved" / "Logs"
 if real.is_dir():

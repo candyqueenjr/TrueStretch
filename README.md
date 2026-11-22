@@ -33,9 +33,10 @@ undone.
 | **Fully automatic** | Adds the custom resolution to your graphics driver, sets full-screen scaling, turns the monitor drivers off and sets VALORANT to Windowed fullscreen + Fill. If a driver can't add a size, the closest one your screen already has is used. |
 | **Four stretch levels** | Light, Classic 4:3, Strong, Extreme — or any size. Change it live in a match with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> toggles. |
 | **Optimize Max** | Windows (power mode, Game Mode, Game Bar recording, windowed-game optimizations, GPU scheduling, refresh rate, Sticky/Filter/Toggle Keys shortcut pop-ups, a switched-off page file, and proof of which graphics chip VALORANT really ran on), NVIDIA driver settings for VALORANT's profile only, VALORANT's graphics files for every account, the in-game settings (read from your account, with the value to pick), and your last match's real FPS and game delay with what limits the FPS (graphics card, processor or FPS cap), whether VALORANT itself or your other programs filled the memory or took the processor, and how it compares with your matches before Optimize Max. Every change verified and undoable. |
+| **Match history** | After every match: average FPS, slow frames, game delay and what held the FPS back, from VALORANT's own statistics. The *Matches* page keeps your history (VALORANT deletes its old logs after a few days) and shows what Optimize Max or a new stretch size did to your FPS. |
 | **Diagnostics** | A full technical report of every value read and every change made — copy it into a bug report in one click. |
 | **Knows your PC** | *My PC* explains every screen, graphics card, driver and Windows setting in plain words, with a fix for anything that isn't right. |
-| **Safe by design** | Backups before every change. A guard process puts your normal resolution back even if TrueStretch crashes. Never touches the game while it runs. |
+| **Safe by design** | Backups before every change. The stretched resolution is never saved into Windows, so a crash or power cut can't leave your PC stretched, and a guard process puts your normal resolution back even if TrueStretch is killed. Crash-safe writes for every file it changes. Never touches the game while it runs. |
 | **Updates itself** | Checks GitHub for new versions, verifies the download (SHA-256) and updates in a few seconds. Your settings stay. |
 
 ## Get started
@@ -61,7 +62,7 @@ undone.
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screens/mypc.png" alt="My PC"><br><sub><b>MY PC</b> — your setup, explained</sub></td>
-<td width="50%"><img src="docs/assets/screens/diagnostics.png" alt="Diagnostics"><br><sub><b>DIAGNOSTICS</b> — full technical report</sub></td>
+<td width="50%"><img src="docs/assets/screens/matches.png" alt="Matches"><br><sub><b>MATCHES</b> — how every match really ran</sub></td>
 </tr>
 </table>
 

@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 
-from .paths import SETTINGS_FILE, STATE_FILE, log
+from .paths import SETTINGS_FILE, STATE_FILE, atomic_write_text, log
 
 APP_DEFAULTS = {
     "theme": "dark",                  # dark | light | system
@@ -19,6 +19,7 @@ APP_DEFAULTS = {
     "last_game": "valorant",
     "onboarded": False,
     "auto_update": True,              # ask GitHub for a newer version at start and every few hours
+    "match_reports": True,            # a short "how the match ran" note after every match
 }
 
 
@@ -60,10 +61,7 @@ class Settings:
 
     def save(self):
         try:
-            SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            tmp = SETTINGS_FILE.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
-            tmp.replace(SETTINGS_FILE)
+            atomic_write_text(SETTINGS_FILE, json.dumps(self.data, indent=2))
         except OSError as exc:
             log.error("Couldn't save settings: %s", exc)
 
@@ -80,7 +78,15 @@ class SessionState:
         self.data = {}
         try:
             self.data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as exc:
+            log.error("session.json unreadable (%s); kept as session.broken.json", exc)
+            try:
+                STATE_FILE.replace(STATE_FILE.with_suffix(".broken.json"))
+            except OSError:
+                pass
+        if not isinstance(self.data, dict):
             self.data = {}
 
     @property
@@ -103,13 +109,18 @@ class SessionState:
             self.data[key] = value
             self._save()
 
+    def keep_on_exit(self):
+        """The player chose to stay stretched when TrueStretch quits: tell the guard process not to undo it."""
+        if self.stretched:
+            self.data["keep_on_exit"] = True
+            self._save()
+
     def clear(self):
         self.data = {}
         self._save()
 
     def _save(self):
         try:
-            STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            STATE_FILE.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
+            atomic_write_text(STATE_FILE, json.dumps(self.data, indent=2))
         except OSError as exc:
             log.error("Couldn't save session state: %s", exc)

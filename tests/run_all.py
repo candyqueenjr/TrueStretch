@@ -13,11 +13,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PY = sys.executable
 SOURCE = ["test_watch.py", "test_updater.py", "test_source_install.py", "test_omen.py", "test_auto.py", "test_ingame.py", "test_gpupref.py", "test_rendergpu.py", "test_matchperf.py",
-          "test_accesskeys.py", "test_pagefile.py", "test_verify_release.py",
+          "test_accesskeys.py", "test_pagefile.py", "test_verify_release.py", "test_safety.py", "test_history.py",
           "test_optimizer.py"]
 BUILD = ["e2e_update.py", "defender_launch.py"]
 # --ci: the read-only tests that need no VALORANT, screen or driver (GitHub Actions runners have none of these)
-CI = ["test_watch.py", "test_updater.py", "test_source_install.py", "test_ingame.py", "test_matchperf.py", "test_rendergpu.py", "test_pagefile.py",
+CI = ["test_watch.py", "test_updater.py", "test_source_install.py", "test_ingame.py", "test_matchperf.py", "test_rendergpu.py", "test_pagefile.py", "test_safety.py", "test_history.py",
       "test_verify_release.py"]
 PASS_MARKERS = ("ALL PASSED", "PASSED")
 

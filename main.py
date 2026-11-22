@@ -25,11 +25,12 @@ def main():
     from truestretch import APP_NAME
     from truestretch.paths import log, setup_logging
 
-    setup_logging()
-    if "--watchdog" in sys.argv:                 # guard process: no window, no Qt
+    if "--watchdog" in sys.argv:                 # guard process: no window, no Qt, its own log file
+        setup_logging("watchdog.log")
         from truestretch import watchdog
         watchdog.run(int(sys.argv[sys.argv.index("--watchdog") + 1]))
         return 0
+    setup_logging()
     if "--update" in sys.argv:                   # check + install from the command line, no window
         from truestretch import updater
         return updater.cli_update()
@@ -75,10 +76,22 @@ def main():
     from truestretch.ui import theme
     from truestretch.ui.main_window import MainWindow
 
+    crash_box = {"open": False, "seen": set()}
+
     def on_crash(exc_type, exc, tb):
+        """Log every unexpected error; show at most one message box at a time and never the same error twice (a
+        repeating error used to stack a new box every half second, right over the game)."""
         log.critical("Unexpected error:\n%s", "".join(traceback.format_exception(exc_type, exc, tb)))
-        QMessageBox.critical(None, APP_NAME, f"Something went wrong:\n\n{exc}\n\nDetails are in the log "
-                             "(My PC › Open log folder). Your settings and backups are safe.")
+        key = (exc_type.__name__, str(exc))
+        if crash_box["open"] or key in crash_box["seen"]:
+            return
+        crash_box["seen"].add(key)
+        crash_box["open"] = True
+        try:
+            QMessageBox.critical(None, APP_NAME, f"Something went wrong:\n\n{exc}\n\nDetails are in the log "
+                                 "(My PC › Open log folder). Your settings and backups are safe.")
+        finally:
+            crash_box["open"] = False
 
     sys.excepthook = on_crash
 

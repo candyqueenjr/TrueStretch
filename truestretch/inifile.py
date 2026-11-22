@@ -6,7 +6,11 @@ line endings are kept exactly as they were. Writes are atomic (temp file + repla
 
 import os
 import stat
+import tempfile
+import threading
 from pathlib import Path
+
+_WRITE_LOCK = threading.Lock()
 
 
 class IniFile:
@@ -19,11 +23,16 @@ class IniFile:
             self.encoding = "utf-8-sig"
         else:
             self.encoding = "utf-8"
+        self.lossy = False
         try:
             self.text = raw.decode(self.encoding)
         except UnicodeDecodeError:
             self.encoding = "mbcs"
-            self.text = raw.decode(self.encoding, errors="replace")
+            try:
+                self.text = raw.decode(self.encoding)
+            except UnicodeDecodeError:
+                self.text = raw.decode(self.encoding, errors="replace")
+                self.lossy = True
         self.newline = "\r\n" if "\r\n" in self.text or not self.text else "\n"
 
     def _bounds(self, lines, section):
@@ -86,9 +95,27 @@ class IniFile:
         self.text = self.newline.join(kept) + self.newline
 
     def save(self):
-        tmp = self.path.with_name(self.path.name + ".truestretch.tmp")
-        tmp.write_bytes(self.text.encode(self.encoding))
-        os.replace(tmp, self.path)
+        """Atomic and crash-safe: a unique temp file next to the original, flushed to disk, then swapped in. A lock
+        keeps two writers (the engine and an Optimize Max worker thread) from interleaving. A file whose bytes
+        couldn't be decoded exactly is never written back - saving it would replace those characters with '?'."""
+        if self.lossy:
+            raise OSError(f"{self.path.name} has characters TrueStretch can't read safely, so it wasn't changed")
+        data = self.text.encode(self.encoding)
+        with _WRITE_LOCK:
+            fd, tmp = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".truestretch.tmp",
+                                       dir=str(self.path.parent))
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, self.path)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
 
 
 def is_read_only(path):

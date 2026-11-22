@@ -2,6 +2,90 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] — 2026-11-22
+
+A full audit of the UI, the code and player requests, and the fixes that came out of it.
+
+### Added
+- **Matches page and after-match report** (`history.py`, `ui/matches_page.py`).
+  - Every finished match is stored in `%APPDATA%\TrueStretch\matches.json`, written atomically, keeping the last 300.
+  - Each match records the map, length, average FPS, slow-frame share, engine latency and the FPS limiter, plus the stretch size and whether Optimize Max was active.
+  - The page shows summary cards, an FPS chart and "what changed your FPS" insights (Optimize Max before/after, by stretch size, most common limiter).
+  - A short report appears after each match. It can be turned off in Settings › Behaviour.
+  - Round blocks now carry the map name.
+- **Troubleshooting window.**
+  - Opens from the VALORANT page and from Settings › Help.
+  - Opens by itself after a failed Test stretch.
+
+### Changed
+- **VALORANT page.**
+  - Compact header; the "more games soon" line is gone.
+  - The checklist collapses to one line when everything passes; failing checks are listed first.
+  - The duplicate "In VALORANT right now" card is folded into the summary.
+  - The unused setup-guide tab, which was still being built and refreshed, is removed.
+  - The "Set full-screen scaling automatically" switch is back, now on the Display tab.
+  - Only the visible tab is refreshed.
+- **Accounts tab.**
+  - Rename button.
+  - The list is rebuilt only when it changes, and never while a name is being edited.
+  - The "Locked" column only appears when a file is locked.
+- **Optimize Max.**
+  - Filters are To do / Optional / Already optimal / Everything, defaulting to To do.
+  - One Optimize button; the per-row Apply buttons are gone.
+  - Selections are kept by item id across filters and scans.
+  - The technical report opens in a dialog.
+  - The score is coloured by value.
+  - Plainer labels: "Optional" and "Set in game".
+  - Undo failures are reported.
+- **Theme.**
+  - Red is reserved for primary actions.
+  - Toggles and checkboxes use off-white instead of red.
+  - Links use the text colour.
+  - A distinct danger colour.
+  - Higher-contrast faint text in both themes.
+  - Light-theme colour fixes.
+  - Keyboard focus outlines appear only after Tab.
+  - Accessible names on rows and tiles.
+  - Switching theme rebuilds the pages so icons follow at once.
+- **Main window.**
+  - Sized to fit the screen.
+  - PLAY shows Starting… and is disabled while launching or when VALORANT isn't installed.
+  - The status badge only appears when there's something to say.
+  - Errors appear once, in a message box only, not also as a toast.
+  - A warning when another program holds the hotkeys.
+  - Pages aren't refreshed while the window is hidden.
+  - Question dialogs have verb buttons instead of Yes/No.
+- **First-run tour.**
+  - A "VALORANT isn't installed" step with Get VALORANT and Look again.
+  - Fix buttons sit inline next to each problem.
+  - A responsive grid for the stretch tiles, with the same availability rule as the VALORANT page.
+- **Test stretch.** A timeout no longer counts as "black bars", and Enter means "it fills".
+
+### Fixed
+- **In-match scaling no longer saves to Windows' display database.** It is applied without `SDC_SAVE_TO_DATABASE`, which had written the stretched mode into Windows' saved display settings, so a power cut mid-match could boot the PC stretched.
+- **`revert_display` is reliable.**
+  - The target comes from the display that was actually stretched.
+  - Falls back to Windows' saved mode.
+  - Clears the session only after checking that the screen left the stretched size.
+  - Otherwise it retries every few seconds, never mid-match, and tells the player once.
+- **`Engine.poll` is guarded.** Each distinct error is logged and shown once, and the crash handler is non-reentrant.
+- **The guard process respects "When TrueStretch quits: keep stretched"** (`keep_on_exit`) and logs to its own `watchdog.log`, so the main log rotates again.
+- **Crash-safe writes everywhere.**
+  - Atomic, fsynced writes (`paths.atomic_write_text` / `atomic_write_bytes`) for settings, session state, the optimizer undo list, VALORANT ini restores and backup restores.
+  - `IniFile.save` uses a unique temp file, an fsync and a process-wide lock.
+  - It refuses to save a file that could only be decoded lossily.
+  - A damaged `session.json` / `optimizer-undo.json` / `matches.json` is set aside as `.broken.json`, and Optimize refuses to run while the undo list is damaged.
+- **Smaller fixes.**
+  - A VALORANT log renamed mid-scan no longer makes the game look "not installed".
+  - The resolution cache is dropped when a driver update removes the custom resolution.
+  - "Switch to X Hz" isn't offered while stretched.
+  - The checklist's resolution and scaling rows can now actually fail (they were always green).
+
+### Tests
+- New `tests/test_safety.py`: switch-back paths, no-save scaling, the guard's keep-stretched case, atomic writes, damaged files and lossy ini files.
+- New `tests/test_history.py`: map parsing (including "Infinity" ≠ the "Init" menu), storage, duplicates, VALORANT log rotation and the after-match note.
+- Both run in CI.
+
 ## [1.10.1] — 2026-11-22
 
 ### Fixed

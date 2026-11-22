@@ -2,8 +2,9 @@
 
 import ctypes
 from ctypes import wintypes
+from datetime import datetime
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QFrame, QLabel, QMainWindow, QMenu,
@@ -15,11 +16,12 @@ from ..paths import log, resource_path
 from ..system import set_dark_title_bar
 from . import icons, theme
 from .game_page import GamePage
+from .matches_page import MatchesPage
 from .mypc_page import MyPcPage
 from .optimize_page import OptimizePage
 from .pages import AboutPage, BackupsPage, SettingsPage
 from .welcome import WelcomeDialog
-from .widgets import Badge, TacticalButton, Toast, button, game_pixmap, hbox, label, vbox
+from .widgets import Badge, FocusRing, TacticalButton, Toast, button, game_pixmap, hbox, label, vbox
 
 LOGO = resource_path("assets/logo.svg")
 WM_HOTKEY = 0x0312
@@ -71,7 +73,8 @@ class ConfirmResolutionDialog(QDialog):
             no, yes = "Switch back", "Keep it"
         revert = button(no, "undo", None, self.reject)
         keep = button(yes, "check", "Primary", self.accept)
-        revert.setDefault(True)
+        self.timed_out = False
+        (keep if test else revert).setDefault(True)     # a test: Enter means "it fills"; a real change: switch back
         self.setLayout(vbox(
             hbox(ic, vbox(label(title, "H2"), label(text, "Muted", wrap=True), spacing=4), spacing=16),
             self.countdown,
@@ -86,6 +89,7 @@ class ConfirmResolutionDialog(QDialog):
         if not first:
             self.remaining -= 1
         if self.remaining <= 0:
+            self.timed_out = True
             self.reject()
             return
         self.countdown.setText(f"Switching back automatically in {self.remaining} s…")
@@ -135,7 +139,7 @@ class SettingsShell(QWidget):
         for page, name in ((self.general, "General"), (self.backups, "Backups"), (self.about, "About")):
             self.tabs.addTab(page, name)
         self.tabs.currentChanged.connect(lambda _: self.refresh())
-        layout = vbox(self.tabs, margins=(0, 8, 0, 0))
+        layout = vbox(self.tabs, margins=(32, 8, 32, 0))
         self.setLayout(layout)
 
     def show_tab(self, name):
@@ -146,8 +150,8 @@ class SettingsShell(QWidget):
 
 
 class MainWindow(QMainWindow):
-    NAV = [("game:valorant", "VALORANT", None), ("optimize", "Optimize", "wand"), ("mypc", "My PC", "pulse"),
-           ("settings", "Settings", "settings")]
+    NAV = [("game:valorant", "VALORANT", None), ("optimize", "Optimize", "wand"), ("matches", "Matches", "chart"),
+           ("mypc", "My PC", "pulse"), ("settings", "Settings", "settings")]
 
     def __init__(self, engine):
         super().__init__()
@@ -157,9 +161,11 @@ class MainWindow(QMainWindow):
         self._current = None
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
-        self.resize(1240, 820)
         self.setMinimumSize(900, 600)
+        self._fit_to_screen(1240, 820)
 
+        self._focus_ring = FocusRing(self)
+        QApplication.instance().installEventFilter(self._focus_ring)
         central = Backdrop()
         central.setObjectName("Content")
         self.setCentralWidget(central)
@@ -180,11 +186,7 @@ class MainWindow(QMainWindow):
 
         self.pages = {}
         self.gid = next(iter(engine.games))
-        for gid in engine.games:
-            self._add_page(f"game:{gid}", GamePage(engine, self, gid))
-        self._add_page("optimize", OptimizePage(engine, self))
-        self._add_page("mypc", MyPcPage(engine, self, self.gid))
-        self._add_page("settings", SettingsShell(engine, self))
+        self._build_pages()
         self.navigate(f"game:{self.gid}")
 
         self._build_tray()
@@ -258,7 +260,7 @@ class MainWindow(QMainWindow):
         self.footer_game = QLabel()
         self.footer_state = QLabel()
         self.footer_version = QLabel(f"V{VERSION}")
-        bar.setLayout(hbox(self.footer_desktop, self.footer_game, None, self.footer_state, self.footer_version,
+        bar.setLayout(hbox(self.footer_desktop, None, self.footer_state, self.footer_version,
                            spacing=26, margins=(20, 0, 20, 0)))
         return bar
 
@@ -295,7 +297,7 @@ class MainWindow(QMainWindow):
         """Only the page on screen is redrawn; the others refresh when they're opened (keeps the app snappy)."""
         self._paint_nav_icons()
         page = self.pages.get(self._current)
-        if page is not None:
+        if page is not None and self.isVisible() and not self.isMinimized():   # hidden: refreshed when shown
             try:
                 page.refresh()
             except Exception:
@@ -313,11 +315,24 @@ class MainWindow(QMainWindow):
                           ("IN MATCH", "warning") if state == "in match" else ("MENU · NATIVE", "success"))
             self.play_btn.setText("In game" if getattr(self, "_compact", False) else "VALORANT running")
             self.play_btn.setEnabled(False)
+        elif e.is_launching(gid):
+            # Starting: say so on the button and don't let a second click launch the game twice.
+            text, kind = "WAITING FOR VALORANT", "info"
+            self.play_btn.setText("Starting…")
+            self.play_btn.setEnabled(False)
+        elif not e.info.get(gid) or not e.info[gid].installed:
+            text, kind = "VALORANT NOT FOUND", "danger"
+            self.play_btn.setText("Play" if getattr(self, "_compact", False) else "Play stretched")
+            self.play_btn.setEnabled(False)
+            self.play_btn.setToolTip("VALORANT wasn't found on this PC. Install it, then press Rescan.")
         else:
-            text, kind = (("LAUNCHING…", "info") if e.is_launching(gid) else ("READY", "success"))
+            text, kind = "", "success"
             self.play_btn.setText("Play" if getattr(self, "_compact", False) else "Play stretched")
             self.play_btn.setEnabled(True)
+            self.play_btn.setToolTip("Sets everything up and starts VALORANT; the desktop stretches once a match "
+                                     "has loaded")
         self.top_status.set(text, kind)
+        self.top_status.setVisible(bool(text) and not getattr(self, "_compact", False))
         self.play_btn.updateGeometry()
 
     def _refresh_footer(self):
@@ -325,34 +340,71 @@ class MainWindow(QMainWindow):
         current = display.current_mode()
         dot = lambda color: f'<span style="color:{color}">■</span>'
         self.footer_desktop.setText(f"{dot(p['info'])}&nbsp; DESKTOP {current}" if current else "")
-        parts = []
-        for gid, game in self.engine.games.items():
-            running = self.engine.running.get(gid)
-            parts.append(f"{dot(p['success'] if running else p['faint'])}&nbsp; {game.name.upper()} "
-                         f"{'RUNNING' if running else 'NOT RUNNING'}")
-        self.footer_game.setText("&nbsp;&nbsp;&nbsp;".join(parts))
         st = self.engine.state
         self.footer_state.setText(f"{dot(p['accent'])}&nbsp; STRETCHED" if st.stretched
                                   else f"{dot(p['faint'])}&nbsp; NATIVE")
         self._refresh_top()
 
     def apply_theme(self):
+        before = theme.palette()
         theme.set_theme(self.engine.settings.app["theme"])
         QApplication.instance().setStyleSheet(theme.stylesheet())
         set_dark_title_bar(int(self.winId()), theme.palette()["dark"])
         self.centralWidget().update()
+        if theme.palette() is not before and self.pages:
+            # Icons are drawn in the theme's colours when a page is built: rebuild the pages so a theme switch
+            # takes full effect right away instead of after a restart. Later, so the click that asked for it
+            # finishes first.
+            QTimer.singleShot(0, self._rebuild_pages)
         self.refresh_all()
+
+    def _build_pages(self):
+        for gid in self.engine.games:
+            self._add_page(f"game:{gid}", GamePage(self.engine, self, gid))
+        self._add_page("optimize", OptimizePage(self.engine, self))
+        self._add_page("matches", MatchesPage(self.engine, self))
+        self._add_page("mypc", MyPcPage(self.engine, self, self.gid))
+        self._add_page("settings", SettingsShell(self.engine, self))
+
+    def _rebuild_pages(self):
+        current = self._current
+        settings_tab = self.pages["settings"].tabs.currentIndex() if "settings" in self.pages else 0
+        for page in list(self.pages.values()):
+            self.stack.removeWidget(page)
+            page.deleteLater()
+        self.pages = {}
+        self._build_pages()
+        self.navigate(current or f"game:{self.gid}")
+        self.pages["settings"].tabs.setCurrentIndex(settings_tab)
 
     def showEvent(self, event):
         super().showEvent(event)
         set_dark_title_bar(int(self.winId()), theme.palette()["dark"])
+        QTimer.singleShot(0, self.refresh_all)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and not self.isMinimized() and self.isVisible():
+            QTimer.singleShot(0, self.refresh_all)
+
+    def _fit_to_screen(self, w, h):
+        """Open at the preferred size, but never bigger than the screen (a 1366x768 laptop or a 1080p screen at 150%
+        scaling has less room than 1240x820), centred."""
+        screen = QApplication.primaryScreen()
+        if not screen:
+            self.resize(w, h)
+            return
+        area = screen.availableGeometry()
+        w, h = min(w, int(area.width() * 0.92)), min(h, int(area.height() * 0.9))
+        self.resize(max(w, 900), max(h, 600))
+        self.move(area.x() + (area.width() - self.width()) // 2, area.y() + (area.height() - self.height()) // 2)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.toast.reposition()
         w = event.size().width()
         self.wordmark.setVisible(w >= 1180)
-        self.footer_game.setVisible(w >= 1000)
+
         self._compact = w < 1040
         self.play_btn.setMinimumWidth(150 if self._compact else 230)
         self._refresh_top()
@@ -371,7 +423,8 @@ class MainWindow(QMainWindow):
             self.tray.showMessage(APP_NAME, text, kind, 4000)
 
     def _error(self, text):
-        self.engine.notify("error", text)
+        log.error(text)                      # a message box only (it used to show a toast with the same text too)
+        self.engine.history.append((datetime.now(), "error", text))
         box = QMessageBox(self)
         box.setWindowTitle(APP_NAME)
         box.setIcon(QMessageBox.Warning)
@@ -430,16 +483,21 @@ class MainWindow(QMainWindow):
         self.engine.revert_display("test finished")
         if kept:
             self.engine.notify("success", "Your screen stretches correctly — you're ready to play.")
+        elif dialog.timed_out:
+            self.engine.notify("info", "Test ended — your normal resolution is back. Press Test stretch any time.")
         else:
             self.engine.repair_scaling(gid)
-            self.engine.notify("warning", "TrueStretch re-applied the stretch scaling in your graphics driver and "
-                                          "Windows. Press Test stretch again to check.")
+            page = self.pages.get(f"game:{gid}")
+            if page is not None:
+                page.troubleshoot("TrueStretch has just set the stretch scaling in your graphics driver and Windows "
+                                  "again. Press Test stretch once more — and if it still isn't right, find what you "
+                                  "see below.")
 
     def restore(self, gid):
         game = self.engine.games[gid]
-        answer = QMessageBox.question(
-            self, APP_NAME, f"Put back {game.name}'s original settings files and your normal desktop resolution?")
-        if answer != QMessageBox.Yes:
+        if not self._ask(f"Put back {game.name}'s original settings?",
+                         f"Your {game.name} settings files go back to how they were before TrueStretch, and your "
+                         "desktop to its normal resolution.", "Restore normal"):
             return
         try:
             self.engine.restore(gid)
@@ -474,6 +532,10 @@ class MainWindow(QMainWindow):
         if not self.engine.settings.app.get("onboarded"):
             self.show_welcome()
         self.check_recovery()
+        if not self.hotkey_ok:
+            self.engine.notify("warning", "Another program already uses TrueStretch's hotkeys (Ctrl+Alt+S, "
+                                          "Ctrl+Alt+↑/↓). Stretching in matches still works automatically — close "
+                                          "that program and restart TrueStretch to get the hotkeys back.")
 
     # ---- updates ----------------------------------------------------------
 
@@ -507,12 +569,22 @@ class MainWindow(QMainWindow):
         if not self.engine.needs_recovery():
             return
         mode = display.Mode.from_list(self.engine.state.data.get("mode"))
-        answer = QMessageBox.question(
-            self, APP_NAME,
-            f"Your desktop is still stretched ({mode}) from last time — TrueStretch or the game closed "
-            "unexpectedly.\n\nSwitch back to your normal resolution now?")
-        if answer == QMessageBox.Yes:
+        if self._ask("Your desktop is still stretched", f"It's still at {mode} from last time — TrueStretch or the "
+                     "game closed unexpectedly.", "Switch back now", "Keep it stretched"):
             self.engine.revert_display("recovered")
+
+    def _ask(self, title, text, yes, no="Cancel"):
+        """A question with real verbs on the buttons instead of Yes / No."""
+        box = QMessageBox(self if self.isVisible() else None)
+        box.setWindowTitle(APP_NAME)
+        box.setIcon(QMessageBox.Question)
+        box.setText(title)
+        box.setInformativeText(text)
+        ok = box.addButton(yes, QMessageBox.AcceptRole)
+        box.addButton(no, QMessageBox.RejectRole)
+        box.setDefaultButton(ok)
+        box.exec()
+        return box.clickedButton() is ok
 
     # ---- tray & closing ---------------------------------------------------
 

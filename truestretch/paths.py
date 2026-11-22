@@ -30,9 +30,36 @@ def resource_path(relative):
     return Path(__file__).resolve().parent.parent / relative
 
 
-def setup_logging():
+def atomic_write_text(path, text, encoding="utf-8"):
+    atomic_write_bytes(path, text.encode(encoding))
+
+
+def atomic_write_bytes(path, data):
+    """Write a file so a crash or power cut leaves either the old or the new content - never a half-written file:
+    write a temporary file next to it, flush it to disk, then swap it in."""
+    import tempfile
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def setup_logging(name="truestretch.log"):
+    """The guard process logs to its own file: it runs as long as the app, and on Windows a second process holding
+    the same log open stops it from ever rotating (it grew forever)."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    handler = RotatingFileHandler(LOG_DIR / name, maxBytes=1_000_000, backupCount=3, encoding="utf-8", delay=True)
     handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s"))
     log.setLevel(logging.INFO)
     log.addHandler(handler)

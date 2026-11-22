@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..inifile import IniFile, is_read_only, set_read_only
+from ..paths import atomic_write_bytes
 from ..system import fixed_drives, flag_value, flags_with, reg_get, reg_delete, reg_set
 from .base import ConfigTarget, Game, InstallInfo, Preset, Tweak
 
@@ -181,8 +182,14 @@ class Valorant(Game):
         """The account Valorant last logged into and the game version, from Valorant's own log."""
         if not LOG_DIR.is_dir():
             return None, None
-        logs = sorted((p for p in LOG_DIR.glob("ShooterGame*.log") if p.stat().st_size > 0),
-                      key=lambda p: p.stat().st_mtime, reverse=True)
+        def stat_or_none(p):          # VALORANT renames its logs as it starts: a file can vanish mid-scan
+            try:
+                st = p.stat()
+                return st if st.st_size > 0 else None
+            except OSError:
+                return None
+        found = [(st.st_mtime, p) for p in LOG_DIR.glob("ShooterGame*.log") for st in [stat_or_none(p)] if st]
+        logs = [p for _, p in sorted(found, key=lambda x: x[0], reverse=True)]
         account = version = None
         for log_file in logs[:3]:
             try:
@@ -354,20 +361,19 @@ class Valorant(Game):
             if original:
                 try:
                     set_read_only(copy, False)
-                    copy.write_bytes(original.read_bytes())
+                    atomic_write_bytes(copy, original.read_bytes())
                 except OSError:
                     pass
         if not target.path.exists():
             original = backups.original(self.id, target.key)
             if original:
-                target.path.write_bytes(original.read_bytes())
+                atomic_write_bytes(target.path, original.read_bytes())
                 return "restored from the original backup"
             return "nothing to restore (file was reset and never recreated)"
         set_read_only(target.path, False)
         original = backups.original(self.id, target.key)
         if original:
-            ini_text = original.read_bytes()
-            target.path.write_bytes(ini_text)
+            atomic_write_bytes(target.path, original.read_bytes())
             return "restored from the original backup"
         ini = IniFile(target.path)
         ini.set(SECTION, self.resolution_values(normal_size[0], normal_size[1], True))

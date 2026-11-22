@@ -1,13 +1,17 @@
 """First-launch tour: explains stretched res, scans the PC step by step, explains what it found,
 and lets the player pick a resolution."""
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QButtonGroup, QDialog, QGridLayout, QLabel, QStackedWidget, QWidget
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QButtonGroup, QDialog, QLabel, QStackedWidget, QWidget
 
 from .. import APP_NAME, display, health
 from . import icons
 from .theme import palette
+from .responsive import ResponsiveGrid
 from .widgets import ResolutionTile, button, clear_layout, game_pixmap, hbox, label, vbox
+
+GET_VALORANT = "https://playvalorant.com/download/"
 
 
 def _page():
@@ -104,8 +108,7 @@ class WelcomeDialog(QDialog):
         layout.addWidget(label("Pick your stretched resolution", "H1"))
         layout.addWidget(label("1440 × 1080 is what most pros use. You can change this any time.", "Muted",
                                wrap=True))
-        grid = QGridLayout()
-        grid.setSpacing(10)
+        grid = ResponsiveGrid(min_width=170, max_cols=4, spacing=10)
         self.tile_group = QButtonGroup(self)
         self.tiles = []
         game = self.engine.games[self.gid]
@@ -114,8 +117,8 @@ class WelcomeDialog(QDialog):
             tile.clicked.connect(lambda _=False, p=preset: self._pick(p.width, p.height))
             self.tile_group.addButton(tile)
             self.tiles.append((tile, preset))
-            grid.addWidget(tile, i // 3, i % 3)
-        layout.addLayout(grid)
+            grid.add(tile)
+        layout.addWidget(grid)
         self.pick_note = label("", "Muted", wrap=True)
         layout.addWidget(self.pick_note)
         layout.addStretch(1)
@@ -126,11 +129,13 @@ class WelcomeDialog(QDialog):
         ic = QLabel()
         ic.setPixmap(icons.pixmap("check-circle", palette()["success"], 56))
         layout.addWidget(ic)
-        layout.addWidget(label("You're all set", "PageTitle"))
+        self.done_icon = ic
+        self.done_title = label("You're all set", "PageTitle")
+        layout.addWidget(self.done_title)
         self.done_text = label("", "Muted", wrap=True)
         layout.addWidget(self.done_text)
         tips = [
-            "Press Play stretched on the Home page. TrueStretch switches everything and starts VALORANT.",
+            "Press Play stretched at the top. TrueStretch sets everything up and starts VALORANT.",
             "When you close VALORANT, your normal resolution comes back by itself.",
             "My PC shows everything about your PC, with fixes. Settings lets you change anything.",
             "TrueStretch keeps running in the tray (next to the clock) so it can switch back after you play.",
@@ -263,6 +268,22 @@ class WelcomeDialog(QDialog):
                                 ". Play stretched switches it to Windowed fullscreen + Fill."))
         for s in sentences:
             self.results.addWidget(label(s, "Muted", wrap=True))
+        if not info.installed:
+            self.results.addSpacing(6)
+            warn = hbox(spacing=12)
+            wi = QLabel()
+            wi.setPixmap(icons.pixmap("alert", p["warning"], 22))
+            warn.addWidget(wi, 0, Qt.AlignTop)
+            warn.addLayout(vbox(label(f"{game.name} isn't installed on this PC", "H3"),
+                                label(f"TrueStretch looked on every drive and couldn't find {game.name}. Install it "
+                                      "with the Riot Client, then press Look again — everything else is ready.",
+                                      "Muted", wrap=True), spacing=2), 1)
+            self.results.addLayout(warn)
+            self.results.addLayout(hbox(
+                button(f"Get {game.name}", "external", "Primary",
+                       lambda: QDesktopServices.openUrl(QUrl(GET_VALORANT))),
+                button("Look again", "refresh", None, lambda: (self.engine.refresh(quiet=True), self._fill_results())),
+                None, spacing=8))
 
         problems = [i for i in items if i.status in (health.WARN, health.BAD)]
         if problems:
@@ -275,17 +296,25 @@ class WelcomeDialog(QDialog):
                 ic.setFixedWidth(22)
                 r = hbox(ic, spacing=10)
                 r.addWidget(label(item.title, None, wrap=True), 1)
+                if item.fix and item.fix_label:          # fix it right here, not "go to another page"
+                    r.addWidget(button(item.fix_label, None, None,
+                                       lambda _=False, it=item: (self.window.run_fix(it),
+                                                                 QTimer.singleShot(600, self._fill_results))))
                 self.results.addLayout(r)
-            self.results.addWidget(label("You can fix these with one click on the My PC page.", "Faint"))
+            if len(problems) > 4:
+                self.results.addWidget(label(f"…and {len(problems) - 4} more on the My PC page.", "Faint"))
         else:
             self.results.addWidget(label(f"Everything looks good — {counts[health.GOOD]} checks passed.", "H3"))
 
     def _fill_pick(self):
         gs = self.engine.gs(self.gid)
         d = self.engine.display_for(self.gid)
-        sizes = set(display.sizes(display.available_modes(d.device if d else None)))
-        for tile, preset in self.tiles:
-            tile.set_available((preset.width, preset.height) in sizes)
+        modes = display.available_modes(d.device if d else None)
+        sizes = set(display.sizes(modes))
+        native = self.engine.native_mode(self.gid, modes)
+        for tile, preset in self.tiles:          # same rule as the VALORANT page: listed, or accepted by the driver
+            tile.set_available((preset.width, preset.height) in sizes or bool(native and display.mode_accepted(
+                display.Mode(preset.width, preset.height, native.hz), d.device if d else None)))
             tile.setChecked((preset.width, preset.height) == (int(gs["width"]), int(gs["height"])))
         self._update_pick_note()
 
@@ -310,5 +339,13 @@ class WelcomeDialog(QDialog):
     def _fill_done(self):
         mode = self.engine.stretch_mode(self.gid)
         gs = self.engine.gs(self.gid)
+        game = self.engine.games[self.gid]
+        if not self.engine.info[self.gid].installed:
+            p = palette()
+            self.done_icon.setPixmap(icons.pixmap("alert", p["warning"], 56))
+            self.done_title.setText("Almost there")
+            self.done_text.setText(f"Install {game.name}, then press Rescan on the {game.name} page. Your stretch "
+                                   f"size ({gs['width']} × {gs['height']}) is saved and ready.")
+            return
         self.done_text.setText(f"All set. Close this and press Play stretched — TrueStretch does the rest "
                                f"({gs['width']} × {gs['height']}{'' if mode else ', added automatically'}).")

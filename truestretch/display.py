@@ -280,6 +280,14 @@ def set_mode(mode, device=None, persist=True):
             raise DisplayError(f"Windows couldn't switch to {mode}: {DISP_ERRORS.get(rc, f'error {rc}')}.")
 
 
+def restore_saved_mode(device=None):
+    """Put a display back to the mode saved in Windows' settings. TrueStretch never saves a stretched mode there
+    (it switches with persist=False), so this is always the player's normal resolution. Raises DisplayError."""
+    rc = user32.ChangeDisplaySettingsExW(device, None, None, 0, None)
+    if rc not in (0, 1):
+        raise DisplayError(f"Windows couldn't restore the saved resolution: {DISP_ERRORS.get(rc, f'error {rc}')}.")
+
+
 def installed_gpus():
     """Every graphics adapter installed, from the driver registry."""
     names = []

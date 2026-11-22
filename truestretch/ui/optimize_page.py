@@ -7,7 +7,7 @@ from datetime import datetime
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QCheckBox, QFrame, QLabel, QPlainTextEdit, QProgressBar, QTabWidget, QWidget
+from PySide6.QtWidgets import QCheckBox, QDialog, QFrame, QLabel, QPlainTextEdit, QProgressBar, QWidget
 
 from .. import optimizer as opt
 from ..paths import log
@@ -18,12 +18,11 @@ from .theme import button_font, palette
 from .widgets import Badge, Card, Segmented, button, clear_layout, divider, hbox, label, vbox
 
 STATE_BADGE = {
-    opt.DONE: ("Optimized", "success"), opt.IMPROVE: ("Can improve", "warning"), opt.OPTIONAL: ("Your choice", "info"),
-    opt.INFO: ("Check", "info"), opt.UNAVAILABLE: ("Not available", "info"), opt.IN_GAME: ("Manual", "accent"),
+    opt.DONE: ("Optimized", "success"), opt.IMPROVE: ("To do", "warning"), opt.OPTIONAL: ("Optional", "info"),
+    opt.INFO: ("Info", "info"), opt.UNAVAILABLE: ("Not available", "info"), opt.IN_GAME: ("Set in game", "warning"),
 }
 LEVEL = {3: "High", 2: "Medium", 1: "Low"}
-FILTERS = [("all", "All"), ("improve", "Can improve"), ("optional", "Your choice"), ("done", "Optimized"),
-           ("info", "Info"), ("in_game", "Manual")]
+FILTERS = [("todo", "To do"), ("optional", "Optional"), ("done", "Already optimal"), ("all", "Everything")]
 
 
 class _Bridge(QObject):
@@ -40,21 +39,22 @@ class ItemRow(QFrame):
         self.item = item
         p = palette()
         self.check = QCheckBox()
-        self.check.setChecked(item.can_apply and item.state == opt.IMPROVE)
+        self.check.setChecked(item.can_apply and item.id in page.selected)
         self.check.setEnabled(item.can_apply)
         self.check.setVisible(item.can_apply)
-        self.check.toggled.connect(page.update_count)
+        self.check.setToolTip("Include this change when you press Optimize")
+        self.check.setAccessibleName(f"Include: {item.title}")
+        self.check.toggled.connect(lambda on, iid=item.id: page.select(iid, on))
 
         badge_text, kind = STATE_BADGE[item.state]
         top = hbox(label(item.title, "H3"), spacing=8)
         top.addWidget(Badge(badge_text.upper(), kind))
-        if item.impact and item.state != opt.UNAVAILABLE:
-            top.addWidget(Badge(f"{item.impact.upper()} · {LEVEL[item.level].upper()}",
-                                "accent" if item.level == 3 else "info"))
         if item.id in changed:
-            top.addWidget(Badge("CHANGED", "info"))
+            top.addWidget(Badge("CHANGED BY TRUESTRETCH", "info"))
         top.addStretch(1)
         text = vbox(top, spacing=4)
+        if item.impact and item.state not in (opt.UNAVAILABLE, opt.DONE):
+            text.addWidget(label(f"{item.impact} · {LEVEL[item.level].lower()} impact", "Faint"))
         if item.why:
             text.addWidget(label(item.why, "Muted", wrap=True))
         extra = [x for x in (item.note, item.blocked) if x]
@@ -62,8 +62,8 @@ class ItemRow(QFrame):
             text.addWidget(label("  ·  ".join(extra), "Faint", wrap=True))
         if result is not None:
             ok, msg = result
-            r = label(("APPLIED AND VERIFIED" if ok else f"DIDN'T WORK: {msg}") +
-                      (" — RESTART TO FINISH" if ok and item.restart else ""), "Caption")
+            r = label(("Done and checked" if ok else f"Didn't work — {msg}") +
+                      (" · restart your PC to finish" if ok and item.restart else ""), "H3")
             r.setStyleSheet(f"color:{p['success'] if ok else p['danger']};")
             r.setWordWrap(True)
             text.addWidget(r)
@@ -71,7 +71,7 @@ class ItemRow(QFrame):
             details = label("\n".join(item.debug), "Mono", selectable=True)
             details.setWordWrap(True)
             details.hide()
-            toggle = button("Technical details", None, "Link", lambda: details.setVisible(not details.isVisible()))
+            toggle = button("Technical details", None, "Subtle", lambda: details.setVisible(not details.isVisible()))
             toggle.setFont(button_font(9, spacing=1.4))
             text.addWidget(toggle, 0, Qt.AlignLeft)
             text.addWidget(details)
@@ -88,8 +88,6 @@ class ItemRow(QFrame):
             col.addWidget(v)
             values.addLayout(col)
         actions = hbox(spacing=6)
-        if item.can_apply:
-            actions.addWidget(button("Apply", None, None, lambda: page.apply([item.id])))
         if item.id in changed:
             actions.addWidget(button("Undo", "undo", None, lambda: page.undo([item.id])))
         if item.link:
@@ -120,17 +118,18 @@ class OptimizePage(Page):
         self.rows = []
         self.busy = False
         self._scanned = False
-        self.filter = "all"
+        self.filter = "todo"
+        self.selected = set()              # item ids ticked for Optimize - kept across filters and re-renders
+        self.unticked = set()              # ids the player unticked on purpose (not re-ticked by the next scan)
         self.bridge = _Bridge()
         self.bridge.progress.connect(self._on_progress)
         self.bridge.scanned.connect(self._on_scanned)
         self.bridge.applied.connect(self._on_applied)
         self.bridge.undone.connect(self._on_undone)
 
-        self.add_header("Optimize Max", "Everything on this PC that affects VALORANT's FPS and input delay — each "
-                        "change listed on its own, with what it is now, what it should be and why. Nothing changes "
-                        "until you press Apply. Every change is verified, and everything can be undone.",
-                        eyebrow="// Performance")
+        self.add_header("Optimize Max", "Fixes the Windows, driver and game settings that cost VALORANT FPS or add "
+                        "input delay. Nothing changes until you press Optimize — every change is checked afterwards "
+                        "and can be undone.", eyebrow="// Performance")
 
         summary = Card(padding=22, spacing=16, accent=True)
         self.score = label("–", "Stat")
@@ -143,14 +142,14 @@ class OptimizePage(Page):
                          hbox(self.score, label("/100", "Muted"), None, spacing=6), self.score_bar, spacing=2)
         self.stat_labels = {}
         stats = hbox(spacing=30)
-        for key, caption in (("improve", "Can improve"), ("optional", "Your choice"), ("done", "Optimized"),
-                             ("in_game", "Manual")):
+        for key, caption in (("improve", "To do"), ("in_game", "Set in game"), ("optional", "Optional"),
+                             ("done", "Already optimal")):
             v = label("–", "Stat")
             self.stat_labels[key] = v
             stats.addLayout(vbox(v, label(caption, "Caption"), spacing=0))
-        self.btn_scan = button("Scan again", "refresh", None, self.scan)
-        self.btn_undo_all = button("Undo all", "undo", None, lambda: self.undo(None))
-        self.btn_apply = button("Apply selected", None, "Primary", self.apply_selected)
+        self.btn_scan = button("Scan again", "refresh", "Ghost", self.scan)
+        self.btn_undo_all = button("Undo all", "undo", "Ghost", lambda: self.undo(None))
+        self.btn_apply = button("Optimize", None, "Primary", self.apply_selected)
         buttons = hbox(self.btn_scan, self.btn_undo_all, self.btn_apply, spacing=8)
         top = Reflow(breakpoint=1000, spacing=26)
         top.add(score_box)
@@ -165,33 +164,51 @@ class OptimizePage(Page):
         summary.add(top, self.progress, self.progress_text, self.scan_info)
         self.content.addWidget(summary)
 
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-        self.tabs.tabBar().setFont(button_font(10.5, spacing=1.6))
-        changes = QWidget()
-        changes.setObjectName("Transparent")
-        self.filter_seg = Segmented(FILTERS, "all")
+        self.filter_seg = Segmented(FILTERS, "todo")
         self.filter_seg.changed.connect(self._set_filter)
-        self.list = vbox(spacing=18)
-        changes.setLayout(vbox(self.filter_seg, self.list, spacing=16, margins=(0, 16, 0, 0)))
-        self.tabs.addTab(changes, "Changes")
-
-        diag = QWidget()
-        diag.setObjectName("Transparent")
-        self.report = QPlainTextEdit()
-        self.report.setReadOnly(True)
-        self.report.setMinimumHeight(520)
-        self.report.setStyleSheet('font-family:"Cascadia Mono","Consolas"; font-size:9pt;')
+        report_btn = button("Technical report", "copy", "Ghost", self.show_report,
+                            "Every value TrueStretch read and every change it made — for bug reports")
         bar = Reflow(breakpoint=640, spacing=10)
-        bar.add(label("Full technical report: every value TrueStretch read, where it read it, and every change made "
-                      "this session. Your Riot account ID is hidden.", "Muted", wrap=True), 1)
-        bar.add(hbox(button("Copy", "copy", None, self.copy_report),
-                     button("Save to Desktop", "download", None, self.save_report), spacing=8))
-        diag.setLayout(vbox(bar, self.report, spacing=12, margins=(0, 16, 0, 0)))
-        self.tabs.addTab(diag, "Diagnostics")
-        self.content.addWidget(self.tabs)
+        bar.add(self.filter_seg)
+        bar.add(None)
+        bar.add(report_btn)
+        self.list = vbox(spacing=18)
+        self.content.addLayout(vbox(bar, self.list, spacing=16))
         self.finish()
         self._set_busy(False)
+
+    def select(self, item_id, on):
+        if on:
+            self.selected.add(item_id)
+            self.unticked.discard(item_id)
+        else:
+            self.selected.discard(item_id)
+            self.unticked.add(item_id)
+        self.update_count()
+
+    def _sync_selection(self):
+        """After a scan: everything that can be fixed is ticked, except what the player unticked themselves."""
+        applicable = {i.id for i in self.opt.items if i.can_apply}
+        todo = {i.id for i in self.opt.items if i.can_apply and i.state == opt.IMPROVE}
+        self.selected = (self.selected & applicable) | (todo - self.unticked)
+
+    def show_report(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("TrueStretch — Technical report")
+        dialog.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        dialog.resize(860, 620)
+        report = QPlainTextEdit(self.opt.report())
+        report.setReadOnly(True)
+        report.setStyleSheet('font-family:"Cascadia Mono","Consolas"; font-size:9pt;')
+        dialog.setLayout(vbox(
+            label("Every value TrueStretch read, where it read it, and every change made this session. Your Riot "
+                  "account ID is hidden.", "Muted", wrap=True),
+            report,
+            hbox(button("Copy", "copy", None, self.copy_report),
+                 button("Save to Desktop", "download", None, self.save_report), None,
+                 button("Close", None, None, dialog.accept), spacing=8),
+            spacing=12, margins=(20, 18, 20, 16)))
+        dialog.exec()
 
     # ---- scanning (background) ----------------------------------------------
     def showEvent(self, event):
@@ -220,6 +237,7 @@ class OptimizePage(Page):
 
     def _on_scanned(self, _):
         self._scanned = True
+        self._sync_selection()
         self._set_busy(False)
         self.render()
 
@@ -244,8 +262,8 @@ class OptimizePage(Page):
     def _matches(self, item):
         if self.filter == "all":
             return True
-        if self.filter == "info":
-            return item.state in (opt.INFO, opt.UNAVAILABLE)
+        if self.filter == "todo":
+            return item.state in (opt.IMPROVE, opt.IN_GAME)
         return item.state == self.filter
 
     def render(self):
@@ -261,12 +279,12 @@ class OptimizePage(Page):
         score = self.opt.score() if items else 0
         self.score.setText(str(score) if items else "–")
         self.score_bar.setValue(score)
-        self.score.setStyleSheet(f"font-size:44pt; color:{p['success'] if score >= 90 else p['text']};")
-        when = self.opt.scanned_at.strftime("%H:%M:%S") if self.opt.scanned_at else "—"
-        running = self.engine.running.get("valorant")
-        self.scan_info.setText(f"Last scan {when}  ·  {len(items)} checks  ·  {len(changed)} change(s) by "
-                               "TrueStretch can be undone" + ("  ·  VALORANT is running: game-file changes wait "
-                                                              "until it's closed" if running else ""))
+        tone = p["success"] if score >= 90 else (p["warning"] if score >= 70 else p["danger"])
+        self.score.setStyleSheet(f"font-size:44pt; color:{tone if items else p['text']};")
+        self.score_bar.setStyleSheet(f"QProgressBar::chunk {{ background:{tone}; }}")
+        self.score_bar.setToolTip("100 = every setting TrueStretch can check is at its best value for VALORANT. "
+                                  "Big wins (input delay, FPS) count more than small ones.")
+        self._render_scan_info()
         order = {opt.IMPROVE: 0, opt.OPTIONAL: 1, opt.INFO: 2, opt.IN_GAME: 3, opt.DONE: 4, opt.UNAVAILABLE: 5}
         shown_any = False
         for group in opt.GROUPS:
@@ -279,7 +297,7 @@ class OptimizePage(Page):
             todo = sum(1 for i in group_items if i.state == opt.IMPROVE)
             all_good = all(i.state in (opt.DONE, opt.UNAVAILABLE) for i in group_items)
             head = hbox(label(group, "H2"), None,
-                        label(f"{todo} to improve" if todo else ("All good" if all_good else ""), "Caption"),
+                        label(f"{todo} to do" if todo else ("All good" if all_good else ""), "Caption"),
                         margins=(20, 16, 20, 14))
             card.body.addLayout(head)
             if group == "Inside VALORANT":
@@ -295,20 +313,41 @@ class OptimizePage(Page):
                 card.body.addWidget(row)
             self.list.addWidget(card)
         if not shown_any and items:
-            self.list.addWidget(label("Nothing in this filter.", "Muted"))
+            empty = Card(padding=24)
+            if self.filter == "todo":
+                empty.add(hbox(_icon("check-circle", p["success"], 24),
+                               vbox(label("Nothing left to do", "H2"),
+                                    label("Every setting TrueStretch can check is already at its best for VALORANT. "
+                                          "Optional changes are under Optional.", "Muted", wrap=True), spacing=3),
+                               None, spacing=14))
+            else:
+                empty.add(label("Nothing here right now.", "Muted"))
+            self.list.addWidget(empty)
         self.update_count()
         self.btn_undo_all.setEnabled(bool(changed) and not self.busy)
-        self.report.setPlainText(self.opt.report())
+
+    def _render_scan_info(self):
+        items, changed = self.opt.items, self.opt.changed_ids()
+        when = self.opt.scanned_at.strftime("%H:%M") if self.opt.scanned_at else "—"
+        undo = (f"{len(changed)} change{'s' if len(changed) != 1 else ''} by TrueStretch can be undone" if changed
+                else "nothing to undo")
+        running = self.engine.running.get("valorant")
+        self.scan_info.setText(f"Last scan {when}  ·  {len(items)} checks  ·  {undo}"
+                               + ("  ·  VALORANT is running: game-file changes wait until it's closed"
+                                  if running else ""))
+
+    def _applicable_selected(self):
+        return [i.id for i in self.opt.items if i.can_apply and i.id in self.selected]
 
     def update_count(self):
-        n = sum(1 for r in self.rows if r.item.can_apply and r.check.isChecked())
-        self.btn_apply.setText(f"Apply selected ({n})" if n else "Apply selected")
+        n = len(self._applicable_selected())
+        self.btn_apply.setText(f"Optimize ({n})" if n else "Optimize")
         self.btn_apply.setEnabled(bool(n) and not self.busy)
         self.btn_apply.updateGeometry()
 
     # ---- actions (background) --------------------------------------------------
     def apply_selected(self):
-        self.apply([r.item.id for r in self.rows if r.item.can_apply and r.check.isChecked()])
+        self.apply(self._applicable_selected())
 
     def apply(self, ids):
         if not ids or self.busy:
@@ -332,6 +371,7 @@ class OptimizePage(Page):
             self.engine.notify("error", f"Couldn't apply: {results}")
             results = []
         self.results = {item.id: (ok, msg) for item, ok, msg in results}
+        self._sync_selection()
         good = sum(1 for _, ok, _ in results if ok)
         bad = len(results) - good
         restart = any(ok and item.restart for item, ok, _ in results)
@@ -352,7 +392,7 @@ class OptimizePage(Page):
                 done = self.opt.undo(ids, hwnd)
             except Exception:
                 log.exception("Optimize undo failed")
-                done = []
+                done = None
             self.bridge.undone.emit(done)
 
         threading.Thread(target=work, name="optimize-undo", daemon=True).start()
@@ -360,7 +400,15 @@ class OptimizePage(Page):
     def _on_undone(self, done):
         self._set_busy(False)
         self.results = {}
-        self.engine.notify("success", f"{len(done)} change(s) put back to how they were.")
+        failed = list(self.opt.last_undo_failed)
+        if done is None:
+            self.engine.notify("error", "Undo didn't work — nothing was changed. Details are in the Technical report.")
+        elif failed:
+            self.engine.notify("warning", f"{len(done)} change(s) put back. Couldn't put back right now: "
+                                          + ", ".join(failed[:3]) + (" …" if len(failed) > 3 else "") + ".")
+        else:
+            self.engine.notify("success", f"{len(done)} change(s) put back to how they were.")
+        self._sync_selection()
         self.render()
 
     def copy_report(self):
@@ -374,7 +422,15 @@ class OptimizePage(Page):
         self.engine.notify("success", f"Saved {path.name} on your Desktop.")
 
     def refresh(self):
-        pass
+        if self._scanned and not self.busy:
+            self._render_scan_info()          # keeps "VALORANT is running" current without a full re-render
+
+
+def _icon(name, color, size):
+    ic = QLabel()
+    ic.setPixmap(icons.pixmap(name, color, size))
+    ic.setAlignment(Qt.AlignTop)
+    return ic
 
 
 def _note(text):

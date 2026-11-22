@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import display, pcinfo
 from .inifile import IniFile, set_read_only
-from .paths import DATA_DIR, log
+from .paths import DATA_DIR, atomic_write_text, log
 from .system import flag_value, flags_with, reg_delete, reg_get, reg_set, running_processes
 
 UNDO_FILE = DATA_DIR / "optimizer-undo.json"
@@ -736,15 +736,28 @@ class Optimizer:
         self.history = []                  # (time, text) of every change, for the diagnostics view
 
     # undo store ------------------------------------------------------------
+    undo_broken = False                    # the undo file was unreadable: block Apply so originals aren't lost
+    last_undo_failed = ()                  # titles of changes the last Undo couldn't put back (shown to the player)
+
     def _undo_data(self):
         try:
-            return json.loads(UNDO_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = json.loads(UNDO_FILE.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a JSON object")
+            return data
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            log.error("optimizer-undo.json unreadable (%s)", exc)
+            try:
+                UNDO_FILE.replace(UNDO_FILE.with_suffix(".broken.json"))
+            except OSError:
+                pass
+            self.undo_broken = True
             return {}
 
     def _save_undo(self, data):
-        UNDO_FILE.parent.mkdir(parents=True, exist_ok=True)
-        UNDO_FILE.write_text(json.dumps(data, indent=1, default=str), encoding="utf-8")
+        atomic_write_text(UNDO_FILE, json.dumps(data, indent=1, default=str))
 
     def changed_ids(self):
         return set(self._undo_data())
@@ -839,6 +852,11 @@ class Optimizer:
         chosen = [self.get(i) for i in ids]
         chosen = [i for i in chosen if i and i.can_apply]
         undo = self._undo_data()
+        if self.undo_broken:
+            # Never overwrite lost originals with already-optimized values: refuse until the file is sorted out.
+            raise OSError("TrueStretch's undo list was damaged (kept as optimizer-undo.broken.json), so nothing was "
+                          "changed. Press Scan again; if it keeps happening, send the report from the Technical "
+                          "report button.")
         results = []
         admin = [i for i in chosen if i._admin_cmds]
         for item in [i for i in chosen if not i._admin_cmds]:
@@ -884,23 +902,34 @@ class Optimizer:
         ids = list(data) if ids is None else [i for i in ids if i in data]
         current = {i.id: i for i in (self.items or self.scan())}
         done = []
+        failed = []
         admin_cmds = []
         for iid in ids:
             entry = data[iid]
             item = current.get(iid)
+            title = entry.get("title", iid)
             try:
+                if item is not None and item.blocked:
+                    failed.append(f"{title} ({item.blocked})")
+                    continue
                 if entry.get("admin"):
                     if item and item._admin_undo:
                         admin_cmds.extend(item._admin_undo(entry.get("data")))
                         done.append(iid)
+                    else:
+                        failed.append(title)
                     continue
                 if item and item._restore:
                     item._restore(entry.get("data"))
                     done.append(iid)
-                    self._record(f"↩ {entry.get('title', iid)} put back")
+                    self._record(f"↩ {title} put back")
+                else:
+                    failed.append(title)     # not on this PC right now (program uninstalled, game not found ...)
             except Exception as exc:
                 log.exception("Undo %s failed", iid)
-                self._record(f"✖ Undo {entry.get('title', iid)} failed: {exc}")
+                self._record(f"✖ Undo {title} failed: {exc}")
+                failed.append(title)
+        self.last_undo_failed = tuple(failed)
         if admin_cmds:
             try:
                 run_elevated(admin_cmds, hwnd)
@@ -909,6 +938,7 @@ class Optimizer:
                         self._record(f"↩ {data[iid].get('title', iid)} put back (restart to finish)")
             except (PermissionError, OSError) as exc:
                 self._record(f"✖ Undo needs administrator permission: {exc}")
+                self.last_undo_failed += tuple(data[d].get("title", d) for d in done if data.get(d, {}).get("admin"))
                 done = [d for d in done if not data.get(d, {}).get("admin")]
         for iid in done:
             data.pop(iid, None)

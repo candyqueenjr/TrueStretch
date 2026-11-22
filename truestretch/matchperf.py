@@ -57,14 +57,24 @@ def _utc(m):
         return None
 
 
+_MAP = re.compile(r"LogMapLoadModel: Update: \[Map Name: ([^|\]]+?)\s*\|")
+_NOT_A_MATCH = {"init", "menu", "mainmenu", "mainmenuv2", "characterselectpersistentlevel"}   # exact names only:
+# a substring test would drop real maps (the Abyss map is called "Infinity", which contains "init")
+
+
 def parse_rounds(text):
     """[{"round", "time" (local datetime | None), "frametime", "frames", "secs", "gpu", "memory", "hitches", "latency",
-    "buckets": {(lo FPS): frames}}] for every complete round block in the text, in order."""
-    rounds, cur = [], None
+    "map" (VALORANT's internal map name | None), "buckets": {(lo FPS): frames}}] for every complete round block in
+    the text, in order."""
+    rounds, cur, current_map = [], None, None
     for line in text.splitlines():
+        if "LogMapLoadModel" in line:
+            mm = _MAP.search(line)
+            if mm and mm.group(1).strip().lower() not in _NOT_A_MATCH:
+                current_map = mm.group(1).strip()
         m = _START.search(line)
         if m:
-            cur = {"time": _utc(m), "round": None, "buckets": {}}
+            cur = {"time": _utc(m), "round": None, "buckets": {}, "map": current_map}
             continue
         if cur is None:
             continue
@@ -146,7 +156,7 @@ def summary(match):
             "slow_share": slow, "memory": max(mem) if mem else None,
             "hitches": int(sum(r.get("hitches", 0) for r in match)), "ended": match[-1]["time"],
             "started": _started(match[0]), "game_mb": game_mb, "total_mb": total_mb, "others_mb": others_mb,
-            "latency": latency, "game_cpu": game_cpu, "sys_cpu": sys_cpu}
+            "latency": latency, "game_cpu": game_cpu, "sys_cpu": sys_cpu, "map": match[0].get("map")}
 
 
 def _cpu_means(match):

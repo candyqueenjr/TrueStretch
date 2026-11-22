@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .inifile import set_read_only
+from .paths import atomic_write_bytes
 
 
 @dataclass
@@ -85,7 +86,7 @@ class BackupManager:
             raise FileNotFoundError(f"The folder for this file no longer exists:\n{dest.parent}")
         if dest.exists():
             set_read_only(dest, False)
-        shutil.copyfile(backup.path, dest)
+        atomic_write_bytes(dest, backup.path.read_bytes())
 
     def delete(self, backup):
         backup.path.unlink(missing_ok=True)

@@ -1,4 +1,4 @@
-﻿"""Home, Backups, Settings and About pages."""
+"""Home, Backups, Settings and About pages."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QGridLayout, QHeaderView, QLabel, QMessageBox,
@@ -246,7 +246,6 @@ class BackupsPage(Page):
 class SettingsPage(Page):
     def __init__(self, engine, window):
         super().__init__(engine, window)
-        self.add_header("Settings", "How TrueStretch itself behaves.")
 
         look = SettingsGroup("Appearance")
         self.theme_seg = Segmented([("dark", "Dark"), ("light", "Light"), ("system", "Match Windows")])
@@ -265,6 +264,10 @@ class SettingsPage(Page):
                                    lambda on: self._set("close_to_tray", on))
         self.t_notify = self._toggle(behaviour, "Notifications", "Show a notification when the resolution changes "
                                      "while the window is hidden.", "bell", lambda on: self._set("notifications", on))
+        self.t_reports = self._toggle(behaviour, "Match report after every match",
+                                      "A short note with your average FPS, slow frames and what held the FPS back. "
+                                      "Every match is also saved on the Matches page.", "chart",
+                                      lambda on: self._set("match_reports", on))
         self.content.addWidget(behaviour)
 
         safety = SettingsGroup("Safety")
@@ -293,6 +296,8 @@ class SettingsPage(Page):
         help_group = SettingsGroup("Help")
         help_group.add_row("Welcome tour", "Scan your PC again and walk through the setup from the start.",
                            button("Show again", "sparkle", None, lambda: self.window.show_welcome()), "book")
+        help_group.add_row("Troubleshooting", "Black bars, no stretch, hotkeys not working - the common problems "
+                           "and their fixes.", button("Open", "lifebuoy", None, self._troubleshoot), "lifebuoy")
         help_group.add_row("Support file", "Something not working? Creates a zip on your Desktop with TrueStretch's "
                            "logs to attach to a bug report. No passwords or account details.",
                            button("Create", "lifebuoy", None, self._support_file), "lifebuoy")
@@ -333,6 +338,11 @@ class SettingsPage(Page):
             self.engine.notify("error", f"Couldn't change the startup setting: {exc}")
             self.refresh()
 
+    def _troubleshoot(self):
+        page = self.window.pages.get(f"game:{self.window.gid}")
+        if page is not None:
+            page.troubleshoot()
+
     def _release_notes(self):
         from .update import open_release_page
         open_release_page()
@@ -358,7 +368,15 @@ class SettingsPage(Page):
         self.engine.backups.keep = self.keep.currentData()
 
     def _reset(self):
-        if QMessageBox.question(self, APP_NAME, "Reset all TrueStretch settings to their defaults?") == QMessageBox.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle(APP_NAME)
+        box.setIcon(QMessageBox.Question)
+        box.setText("Reset all TrueStretch settings to their defaults?")
+        box.setInformativeText("Backups, your match history and your game files aren't touched.")
+        reset = box.addButton("Reset settings", QMessageBox.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is reset:
             self.engine.settings.reset()
             set_startup(False)
             self.window.apply_theme()
@@ -369,6 +387,8 @@ class SettingsPage(Page):
         app = self.engine.settings.app
         with quiet(self.t_update):
             self.t_update.setChecked(bool(app.get("auto_update", True)))
+        with quiet(self.t_reports):
+            self.t_reports.setChecked(bool(app.get("match_reports", True)))
         with quiet(self.theme_seg, self.t_startup, self.t_minimized, self.t_tray, self.t_notify, self.t_confirm):
             self.theme_seg.set_value(app["theme"])
             self.t_startup.setChecked(startup_enabled())

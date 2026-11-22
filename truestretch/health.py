@@ -158,7 +158,8 @@ def checks(engine, gid):
     if d:
         cur = display.current_mode(device)
         top = display.refresh_rates(modes, *cur.size)[0] if cur and display.refresh_rates(modes, *cur.size) else None
-        if cur and top and cur.hz + 1 < top:
+        # never offered while stretched: that switch is saved in Windows and would save the stretched size with it
+        if cur and top and cur.hz + 1 < top and not engine.is_stretched():
             target = Mode(cur.width, cur.height, top)
 
             def raise_refresh(win, dev=device, new=target, old=cur):
@@ -171,7 +172,7 @@ def checks(engine, gid):
                        f"Your screen can show {top} pictures per second but Windows only sends {cur.hz}. "
                        "A higher refresh rate makes movement smoother and aiming easier.",
                        f"Switch to {top} Hz", raise_refresh))
-        elif cur:
+        elif cur and not (top and cur.hz + 1 < top):
             add(Health("refresh", g, f"{where} runs at its best refresh rate ({cur.hz} Hz)", GOOD,
                        "Windows is already using the highest refresh rate this screen supports."))
         mine = best.get(device, (0, None))[0]

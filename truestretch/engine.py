@@ -45,6 +45,7 @@ class Engine(QObject):
     changed = Signal()                  # anything the UI shows may have changed
     message = Signal(str, str)          # level (info|success|warning|error), text
     game_state = Signal(str, bool)      # game id, running
+    history_changed = Signal()          # a finished match was added to the match history
 
     def __init__(self, settings):
         super().__init__()
@@ -63,7 +64,14 @@ class Engine(QObject):
         self._gpu_scaling_done = set()      # displays whose driver scaling was checked this session
         self._first_run = set()             # games started before they had any settings file
         self._lock_warned = {}              # gid -> resolution we already warned about
+        self._revert_retry = None           # (reason, monotonic time) when switching back failed and must be retried
+        self._revert_error_shown = False
+        self._poll_errors = set()           # errors in poll() already reported (each shown once, never a flood)
         self._migrate_settings()
+        self.timer = QTimer(self)
+        self.timer.setInterval(POLL_MS)
+        self.timer.timeout.connect(self.poll)
+        self.timer.start()
         self.refresh(quiet=True)
 
     def _migrate_settings(self):
@@ -84,10 +92,6 @@ class Engine(QObject):
             gs.setdefault("auto_match", True)
             gs["_method_2026b"] = True
         self.settings.save()
-        self.timer = QTimer(self)
-        self.timer.setInterval(POLL_MS)
-        self.timer.timeout.connect(self.poll)
-        self.timer.start()
 
     # ---- general ----------------------------------------------------------
 
@@ -220,8 +224,10 @@ class Engine(QObject):
                   else f"Set up automatically after your first {game.name} session"),
             Check("launcher", "Riot Client found", bool(info.launcher),
                   str(info.launcher) if info.launcher else "Needed only for the Play button."),
-            Check("resolution", f"{size} works on your display", True,
-                  f"Ready at {mode.hz} Hz" if mode else "Added to your graphics driver automatically when you play"),
+            Check("resolution", f"{size} works on your display", True if mode or self.closest_mode(gid) else False,
+                  f"Ready at {mode.hz} Hz" if mode else
+                  ("Added to your graphics driver automatically when you play" if self.closest_mode(gid) else
+                   "Your screen doesn't offer any narrower resolution — update the graphics driver (My PC)")),
             Check("monitors", "Monitor drivers off", None if self.monitor_drivers_on(gid) else True,
                   "Play stretched turns them off (admin prompt)" if self.monitor_drivers_on(gid)
                   else "VALORANT can't read the 16:9 shape"),
@@ -234,9 +240,10 @@ class Engine(QObject):
         title = "Picture stretched to full screen"
         if mon and mon.stretches:
             return Check("scaling", title, True, f"{mon.name}: scaling is set to stretch")
-        if gs.get("auto_scaling", True) and mon:
+        if gs.get("auto_scaling", True):
             return Check("scaling", title, True, "TrueStretch turns stretch scaling on when you play")
-        return Check("scaling", title, True, "TrueStretch sets the graphics driver to stretch when you play")
+        return Check("scaling", title, None, "Automatic scaling is off (Display tab) — set Full-screen scaling in your "
+                                             "graphics driver, or turn it back on")
 
     def is_stretched(self, gid=None):
         return self.state.stretched and (gid is None or self.state.data.get("game") == gid)
@@ -448,6 +455,11 @@ class Engine(QObject):
             try:
                 display.set_mode(mode, device, persist=False)
             except DisplayError as exc:
+                # A driver update can drop a custom resolution we added earlier: forget what we cached so the next
+                # try works it out (and re-adds it) from scratch instead of failing every match until a restart.
+                cached = self._resolved.pop(gid, None)
+                if cached:
+                    self._create_tried.discard(cached[0])
                 raise StretchError(str(exc)) from exc
         self.state.mark_stretched(gid, device, previous if previous != mode else None, mode)
         self._ensure_stretch_scaling(gid, d)
@@ -521,17 +533,16 @@ class Engine(QObject):
         if not mon or mon.stretches:
             return False
         try:
-            ok = displayconfig.set_scaling(d.device, displayconfig.SCALING_STRETCHED)
+            # save=False: the desktop is stretched right now, and saving would write the stretched resolution into
+            # Windows' display database (a power cut mid-match would then boot the PC stretched).
+            ok = displayconfig.set_scaling(d.device, displayconfig.SCALING_STRETCHED, save=False)
             after = displayconfig.monitor_for(d.device)
             ok = ok and (after is None or after.stretches)
         except OSError:
             ok = False
         if ok:
             self.state.remember("previous_scaling", mon.scaling)
-            return True
-        if self._nvidia_stretches(d):     # NVIDIA reports its own scaling; Windows may still say "identity"
-            return False
-        return False
+        return ok
 
     def repair_scaling(self, gid):
         """The player saw black bars: set the driver and Windows scaling again from scratch."""
@@ -624,20 +635,56 @@ class Engine(QObject):
         self.notify("success", f"Stretch scaling is on for {d.title}.")
         self.changed.emit()
 
+    def _revert_target(self, gid, device):
+        """The mode to go back to, worked out for the display that was really stretched (stored in the session),
+        not whatever display is selected in the settings now."""
+        modes = display.available_modes(device)
+        choice = self.gs(gid).get("normal", "previous")
+        if choice != "previous" and modes:
+            try:
+                w, h = (int(v) for v in choice.lower().split("x"))
+                rates = display.refresh_rates(modes, w, h)
+                if rates:
+                    return Mode(w, h, rates[0])
+            except ValueError:
+                pass
+        prev = Mode.from_list(self.state.data.get("previous"))
+        if prev and (not modes or prev in modes):
+            return prev
+        if modes:
+            biggest = display.sizes(modes)[0]
+            return Mode(*biggest, display.refresh_rates(modes, *biggest)[0])
+        return None
+
     def revert_display(self, reason=""):
+        """Back to the normal resolution. Only forgets the stretch once the screen has really left it - if Windows
+        refuses or the screen can't be read (driver reset, monitor reconnecting), the record stays and poll() tries
+        again a few seconds later (and the guard process still knows to undo it)."""
         if not self.state.stretched:
             return False
         gid = self.state.data.get("game") or next(iter(self.games))
         device = self.state.data.get("device")
-        target = self.normal_mode(gid)
+        stretched = Mode.from_list(self.state.data.get("mode"))
         current = display.current_mode(device)
-        if target and current and current != target:
+        if current is None:
+            return self._revert_failed(reason, "your screen didn't answer")
+        if not stretched or current.size == stretched.size:
+            target = self._revert_target(gid, device)
+            error = None
             try:
+                if target is None:
+                    raise DisplayError("no normal resolution found")
                 display.set_mode(target, device)
             except DisplayError as exc:
-                self.notify("error", str(exc))
-                return False
-            self.notify("success", f"Desktop back to {target}" + (f" ({reason})." if reason else "."))
+                error = exc
+                try:
+                    display.restore_saved_mode(device)   # Windows' saved mode: never stretched (persist=False)
+                except DisplayError:
+                    pass
+            after = display.current_mode(device)
+            if after is None or (stretched and after.size == stretched.size):
+                return self._revert_failed(reason, str(error or "Windows didn't switch"))
+            self.notify("success", f"Desktop back to {after}" + (f" ({reason})." if reason else "."))
         previous_scaling = self.state.data.get("previous_scaling")
         if previous_scaling is not None and device:
             try:
@@ -645,8 +692,19 @@ class Engine(QObject):
             except (OSError, ValueError):
                 log.warning("Couldn't put the previous scaling mode back")
         self.state.clear()
+        self._revert_retry = None
+        self._revert_error_shown = False
         self.changed.emit()
         return True
+
+    def _revert_failed(self, reason, why):
+        log.warning("Switching back failed (%s): %s", reason, why)
+        self._revert_retry = (reason or "retry", time.monotonic() + 3)
+        if not self._revert_error_shown:
+            self._revert_error_shown = True
+            self.notify("error", f"Couldn't switch your desktop back yet ({why}). TrueStretch keeps trying — or press "
+                                 "Restore normal.")
+        return False
 
     def restore(self, gid):
         game, gs = self.games[gid], self.gs(gid)
@@ -689,6 +747,31 @@ class Engine(QObject):
     # ---- watching ---------------------------------------------------------
 
     def poll(self):
+        """Runs every half second. An error here must never take the app down or flood the screen: it's logged
+        every time and shown once."""
+        try:
+            self._poll()
+            self._retry_revert()
+        except Exception as exc:
+            key = f"{type(exc).__name__}: {exc}"
+            if key not in self._poll_errors:
+                self._poll_errors.add(key)
+                log.exception("Watching the game failed")
+                self.notify("error", f"Something went wrong while watching the game ({exc}). TrueStretch keeps "
+                                     "running; details are in the log.")
+
+    def _retry_revert(self):
+        """A switch back that failed earlier is retried every few seconds - but never in the middle of a match."""
+        if not self._revert_retry or not self.state.stretched:
+            self._revert_retry = None
+            return
+        reason, when = self._revert_retry
+        gid = self.state.data.get("game")
+        if time.monotonic() < when or (gid and self.match_state(gid) == "in match"):
+            return
+        self.revert_display(reason)
+
+    def _poll(self):
         procs = running_processes()
         for gid, game in self.games.items():
             now, before = game.is_running(procs), self.running.get(gid, False)
@@ -709,6 +792,7 @@ class Engine(QObject):
                     if gid in self.watchers:
                         self.watchers[gid].reset()
                     QTimer.singleShot(3000, lambda g=gid: self._after_close(g))   # the game saves as it exits
+                    QTimer.singleShot(15000, lambda g=gid: self.report_match(g))
                     if self.is_stretched(gid) and gs.get("revert_on_exit", True):
                         self.revert_display(f"{game.name} closed")
                 self.changed.emit()
@@ -742,7 +826,32 @@ class Engine(QObject):
             self.paused = False
             if self.is_stretched(gid):
                 self.revert_display("back to the menu")
+            # VALORANT writes the last round's statistics a moment after the match ends.
+            QTimer.singleShot(15000, lambda g=gid: self.report_match(g))
         self.changed.emit()
+
+    def report_match(self, gid="valorant"):
+        """Add the match that just finished to the history and tell the player how it ran (in the background:
+        reading the game's logs can take a moment)."""
+        if getattr(self, "_reporting", False):
+            return
+        self._reporting = True
+
+        def work():
+            try:
+                from . import history
+                _, new = history.refresh_for(self, gid)
+                if new:
+                    self.history_changed.emit()
+                    if self.settings.app.get("match_reports", True):
+                        self.notify("info", history.report_text(new[-1]))
+            except Exception:
+                log.exception("Match report failed")
+            finally:
+                self._reporting = False
+
+        import threading
+        threading.Thread(target=work, name="match-report", daemon=True).start()
 
     def _after_close(self, gid):
         """After the game exits: set up any account it created or changed (first sign-in, new account, the game or
@@ -811,6 +920,9 @@ class Engine(QObject):
     def shutdown(self):
         self.timer.stop()
         gid = self.state.data.get("game")
-        if (self.state.stretched and not any(self.running.values())
-                and gid in self.games and self.gs(gid).get("revert_on_app_exit", True)):
+        if not self.state.stretched or gid not in self.games:
+            return
+        if not self.gs(gid).get("revert_on_app_exit", True):
+            self.state.keep_on_exit()             # the guard process must not undo what the player chose to keep
+        elif not any(self.running.values()):
             self.revert_display("app closed")

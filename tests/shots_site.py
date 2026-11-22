@@ -89,9 +89,26 @@ save(card_of(page.score), "optimize-score.png")
 first_group = page.list.itemAt(0).widget()
 save(first_group, "optimize.png")
 save(win, "optimize-full.png")
-page.tabs.setCurrentIndex(1)
-pump()
-save(win, "diagnostics.png")
+win.navigate("matches")
+mp = win.pages["matches"]
+for _ in range(200):
+    pump(0.05)
+    if mp._loaded and not mp.busy:
+        break
+# Example history for the website (not anyone's real matches): 24 matches, Optimize Max applied after the 12th.
+from datetime import datetime, timedelta
+maps = ["Ascent", "Duality", "Triad", "Bonsai", "Jam", "Infinity", "Pitt", "Juliett"]
+demo, t0 = [], datetime(2026, 11, 10, 19, 0)
+for i in range(24):
+    opt_on = i >= 12
+    fps = (231 if opt_on else 204) + (i * 37 % 23) - 11
+    demo.append({"started": (t0 + timedelta(hours=9 * i)).isoformat(timespec="seconds"), "map": maps[i % len(maps)],
+                 "minutes": 26 + i * 7 % 13, "rounds": 20, "fps": float(fps), "slow_share": 0.004 if opt_on else 0.011,
+                 "latency": 5.2 if opt_on else 6.1, "gpu_busy": 0.4, "limit": "cpu", "hitches": 0,
+                 "stretch": "1440 × 1080", "optimized": opt_on})
+mp.records = demo
+mp.render()
+save(win, "matches.png")
 win.navigate("mypc")
 pump(0.8)
 save(win, "mypc.png")

@@ -10,7 +10,7 @@ import time
 
 from . import display, displayconfig
 from .display import Mode
-from .paths import STATE_FILE, log
+from .paths import STATE_FILE, atomic_write_text, log
 from .system import launch_command, running_processes
 
 SYNCHRONIZE = 0x00100000
@@ -65,6 +65,9 @@ def run(pid):
         state = _read_state()
         if not state.get("stretched"):
             return                                       # nothing to undo
+        if state.get("keep_on_exit"):
+            log.info("Watchdog: the player chose to stay stretched after quitting; leaving the desktop as it is")
+            return
         owner = int(state.get("owner") or 0)
         if owner and owner != pid and _alive(owner):
             return                                       # a newer TrueStretch took over
@@ -75,14 +78,17 @@ def run(pid):
     device = state.get("device")
     target = Mode.from_list(state.get("previous"))
     try:
-        if target:
+        try:
+            if not target:
+                raise display.DisplayError("no previous mode stored")
             display.set_mode(target, device)
-        else:
-            ctypes.windll.user32.ChangeDisplaySettingsExW(device, None, None, 0, None)   # back to saved mode
+        except display.DisplayError as exc:
+            log.warning("Watchdog: %s; using Windows' saved mode (never the stretched one)", exc)
+            display.restore_saved_mode(device)
         prev_scaling = state.get("previous_scaling")
         if prev_scaling is not None and device:
             displayconfig.set_scaling(device, int(prev_scaling))
-        STATE_FILE.write_text("{}", encoding="utf-8")
+        atomic_write_text(STATE_FILE, "{}")
         log.info("Watchdog: desktop restored to %s", target or "the saved mode")
     except Exception:
         log.exception("Watchdog couldn't restore the desktop")

@@ -172,9 +172,12 @@ def monitor_for(device):
     return None
 
 
-def set_scaling(device, scaling, apply=True):
+def set_scaling(device, scaling, apply=True, save=True):
     """Ask Windows / the graphics driver to use this scaling mode for one screen.
-    With apply=False it only checks the driver would accept it. Returns True on success."""
+    With apply=False it only checks the driver would accept it. Returns True on success.
+    save=False applies it for this Windows session only. Use that while the desktop is stretched: saving also writes
+    the CURRENT (stretched) resolution into Windows' display database, so a power cut mid-match would boot the PC
+    stretched."""
     paths, modes, n_paths, n_modes = _query()
     changed = False
     for i in range(n_paths):
@@ -185,6 +188,8 @@ def set_scaling(device, scaling, apply=True):
             changed = True
     if not changed:
         return False
-    flags = SDC_USE_SUPPLIED_DISPLAY_CONFIG | (SDC_APPLY | SDC_SAVE_TO_DATABASE | SDC_ALLOW_CHANGES if apply
-                                               else SDC_VALIDATE)
+    if apply:
+        flags = SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_APPLY | SDC_ALLOW_CHANGES | (SDC_SAVE_TO_DATABASE if save else 0)
+    else:
+        flags = SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_VALIDATE
     return user32.SetDisplayConfig(n_paths, paths, n_modes, modes, flags) == 0

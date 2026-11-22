@@ -1,7 +1,7 @@
 """Reusable widgets: cards, toggles, segmented controls, tiles, badges, toasts."""
 
-from PySide6.QtCore import (Property, QEasingCurve, QEvent, QFileInfo, QObject, QPoint, QPropertyAnimation, QRectF,
-                            QSize, Qt, QTimer, Signal)
+from PySide6.QtCore import (Property, QEasingCurve, QFileInfo, QPoint, QPropertyAnimation, QRectF, QSize, Qt,
+                            QTimer, Signal)
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFileIconProvider, QFrame, QGraphicsOpacityEffect,
                                QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget)
@@ -137,34 +137,6 @@ class TacticalButton(QPushButton):
                              Qt.AlignLeft | Qt.AlignVCenter, self.text())
         else:
             painter.drawText(inner, Qt.AlignCenter, self.text())
-        paint_focus(self, painter)
-
-
-def paint_focus(widget, painter):
-    """Keyboard-focus outline for custom-painted controls (only after Tab, not after a mouse click)."""
-    if widget.property("kbfocus") and widget.hasFocus():
-        painter.setRenderHint(QPainter.Antialiasing, False)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QColor(palette()["info"]))
-        painter.drawRect(QRectF(0.5, 0.5, widget.width() - 1, widget.height() - 1))
-
-
-class FocusRing(QObject):
-    """App-wide event filter: marks a widget with kbfocus=true while it has focus from the keyboard, so the
-    stylesheet and custom painters can draw a visible focus outline without one appearing after every click."""
-
-    KEYBOARD = (Qt.TabFocusReason, Qt.BacktabFocusReason, Qt.ShortcutFocusReason)
-
-    def eventFilter(self, obj, event):
-        kind = event.type()
-        if kind in (QEvent.FocusIn, QEvent.FocusOut) and isinstance(obj, QWidget):
-            on = kind == QEvent.FocusIn and event.reason() in self.KEYBOARD
-            if bool(obj.property("kbfocus")) != on:
-                obj.setProperty("kbfocus", on)
-                obj.style().unpolish(obj)
-                obj.style().polish(obj)
-                obj.update()
-        return False
 
 
 class Card(QFrame):
@@ -248,7 +220,7 @@ class ToggleSwitch(QAbstractButton):
         p = palette()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        off, on = QColor(p["surface3"]), QColor(p["text"])
+        off, on = QColor(p["surface3"]), QColor(p["accent"])
         painter.setRenderHint(QPainter.Antialiasing, False)
         t = self._offset
         track = QColor(int(off.red() + (on.red() - off.red()) * t), int(off.green() + (on.green() - off.green()) * t),
@@ -258,13 +230,12 @@ class ToggleSwitch(QAbstractButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(track)
         painter.drawRect(QRectF(0, 0, self.width(), self.height()))
-        knob = QColor(p["muted"] if self._offset < 0.5 else p["bg"])
+        knob = QColor(p["text"] if self._offset < 0.5 else "#ffffff")
         if not self.isEnabled():
             knob.setAlpha(150)
         painter.setBrush(knob)
         x = 3 + t * (self.width() - 19)
         painter.drawRect(QRectF(x, 3, 16, 16))
-        paint_focus(self, painter)
 
     def sizeHint(self):
         return QSize(40, 22)
@@ -337,10 +308,6 @@ class SettingsGroup(Card):
         from .responsive import Reflow
         body = Reflow(breakpoint=620, spacing=12)       # control drops under the text on narrow windows
         body.add(text, 1)
-        if isinstance(control, QWidget):
-            control.setAccessibleName(title)                 # screen readers announce the row title
-            if description:
-                control.setAccessibleDescription(description)
         if control is not None:
             body.add(control, 0, Qt.AlignVCenter | Qt.AlignLeft) if isinstance(control, QWidget) else body.add(control)
         layout.addWidget(body, 1)
@@ -361,7 +328,6 @@ class ResolutionTile(QAbstractButton):
         self.setAttribute(Qt.WA_Hover)
         self.setMinimumSize(150, 96)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setAccessibleName(f"{title}, {subtitle}")
 
     def set_available(self, available):
         self.available = available
@@ -399,20 +365,16 @@ class ResolutionTile(QAbstractButton):
         painter.drawText(QRectF(14, 37, rect.width() - 28, 18), Qt.AlignLeft | Qt.AlignVCenter, self.subtitle)
 
         if self.available is not None:
-            if checked:
-                color = QColor(("#0b7a61" if p["dark"] else "#3ee0b9") if self.available else
-                               ("#5b6470" if p["dark"] else "#b9b0a2"))
-            else:
-                color = QColor(p["success"] if self.available else p["faint"])
+            color = QColor(("#0b8f6e" if checked else p["success"]) if self.available else
+                           (p["faint"] if not checked else "#6b7480"))
             painter.setPen(Qt.NoPen)
             painter.setBrush(color)
             painter.drawRect(QRectF(14, 69, 6, 6))
             painter.setPen(color)
             painter.drawText(QRectF(27, 63, rect.width() - 40, 18), Qt.AlignLeft | Qt.AlignVCenter,
-                             "Ready" if self.available else "Created when you press Play")
+                             "Ready" if self.available else "Added when you play")
         if checked:
             painter.drawPixmap(int(rect.width() - 26), 14, icons.pixmap("check", p["accent"], 16))
-        paint_focus(self, painter)
 
 
 class CheckRow(QWidget):

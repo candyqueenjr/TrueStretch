@@ -285,7 +285,8 @@ class WelcomeDialog(QDialog):
                 button("Look again", "refresh", None, lambda: (self.engine.refresh(quiet=True), self._fill_results())),
                 None, spacing=8))
 
-        problems = [i for i in items if i.status in (health.WARN, health.BAD)]
+        problems = [i for i in items if i.status in (health.WARN, health.BAD)
+                    and not (i.key == "installed" and not info.installed)]      # already explained just above
         if problems:
             self.results.addSpacing(6)
             self.results.addWidget(label(f"{len(problems)} thing{'s' if len(problems) > 1 else ''} to look at", "H3"))

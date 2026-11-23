@@ -8,7 +8,7 @@ from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QFrame, QLabel, QMainWindow, QMenu,
-                               QMessageBox, QPushButton, QStackedWidget, QSystemTrayIcon, QTabWidget, QWidget)
+                               QMessageBox, QPushButton, QStackedWidget, QSystemTrayIcon, QTabBar, QWidget)
 
 from .. import APP_NAME, VERSION, display
 from ..engine import MonitorDriversOn, StretchError
@@ -129,24 +129,37 @@ class SettingsShell(QWidget):
     def __init__(self, engine, window):
         super().__init__()
         self.setObjectName("Transparent")
-        self.tabs = QTabWidget()
+        # A bare tab bar centred over a stack (QTabWidget's document mode ignored the centre alignment and left the
+        # tabs hugging the window edge while the pages below are a centred column).
+        self.tabs = QTabBar()
         self.tabs.setDocumentMode(True)
-        self.tabs.tabBar().setFont(theme.button_font(11, spacing=2.0))
-        self.tabs.setStyleSheet("QTabWidget::tab-bar { alignment: center; }")      # like VALORANT's settings menu
+        self.tabs.setExpanding(False)
+        self.tabs.setDrawBase(False)
+        self.tabs.setFont(theme.button_font(11, spacing=2.0))
+        self.tabs.setCursor(Qt.PointingHandCursor)
+        self.stack = QStackedWidget()
         self.general = SettingsPage(engine, window)
         self.backups = BackupsPage(engine, window)
         self.about = AboutPage(engine, window)
         for page, name in ((self.general, "General"), (self.backups, "Backups"), (self.about, "About")):
-            self.tabs.addTab(page, name)
-        self.tabs.currentChanged.connect(lambda _: self.refresh())
-        layout = vbox(self.tabs, margins=(32, 8, 32, 0))
+            self.tabs.addTab(name)
+            self.stack.addWidget(page)
+        self.tabs.currentChanged.connect(self._tab_changed)
+        layout = vbox(hbox(None, self.tabs, None, spacing=0), self.stack, spacing=0, margins=(0, 10, 0, 0))
         self.setLayout(layout)
+
+    def _tab_changed(self, index):
+        self.stack.setCurrentIndex(index)
+        self.refresh()
 
     def show_tab(self, name):
         self.tabs.setCurrentIndex({"general": 0, "backups": 1, "about": 2}.get(name, 0))
 
     def refresh(self):
-        self.tabs.currentWidget().refresh()
+        self.stack.currentWidget().refresh()
+
+    def settle(self):
+        self.stack.currentWidget().settle()
 
 
 class MainWindow(QMainWindow):
@@ -279,10 +292,7 @@ class MainWindow(QMainWindow):
         self._current = target
         if key in ("backups", "about"):
             page.show_tab(key)
-        try:
-            page.refresh()
-        except Exception:
-            log.exception("Refreshing %s failed", type(page).__name__)
+        self._refresh_page(page)
         if target.startswith("game:"):
             self.engine.settings.app["last_game"] = target.split(":", 1)[1]
 
@@ -298,13 +308,17 @@ class MainWindow(QMainWindow):
         self._paint_nav_icons()
         page = self.pages.get(self._current)
         if page is not None and self.isVisible() and not self.isMinimized():   # hidden: refreshed when shown
-            try:
-                page.refresh()
-            except Exception:
-                log.exception("Refreshing %s failed", type(page).__name__)
+            self._refresh_page(page)
         self._refresh_top()
         self._refresh_footer()
         self._refresh_tray()
+
+    def _refresh_page(self, page):
+        try:
+            page.refresh()
+            page.settle()
+        except Exception:
+            log.exception("Refreshing %s failed", type(page).__name__)
 
     def _refresh_top(self):
         e, gid = self.engine, self.gid
@@ -408,8 +422,20 @@ class MainWindow(QMainWindow):
         self._compact = w < 1040
         self.play_btn.setMinimumWidth(150 if self._compact else 230)
         self._refresh_top()
+        # Narrow window: every tab keeps its label, just set tighter (the old rule left "VALORANT" in words and the
+        # other four as bare icons - inconsistent, and a new player had to guess what the icons were).
+        tight = w < 1000
+        if tight != getattr(self, "_tight_nav", None):
+            self._tight_nav = tight
+            font = theme.button_font(10.5 if tight else 12, spacing=1.2 if tight else 2.0)
+            for b in self.nav_buttons.values():
+                b.setFont(font)
+                b.setProperty("tight", "true" if tight else "false")
+                b.style().unpolish(b)
+                b.style().polish(b)
+                b.updateGeometry()          # a button doesn't re-measure itself after a font change: labels clipped
         for b in self.nav_buttons.values():
-            b.setText("" if w < 960 and b.property("icon_name") else b.property("full_text"))
+            b.setText(b.property("full_text"))
             b.setToolTip(b.property("full_text"))
 
     # ---- messages ---------------------------------------------------------

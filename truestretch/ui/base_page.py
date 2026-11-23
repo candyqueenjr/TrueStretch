@@ -80,3 +80,14 @@ class Page(QScrollArea):
 
     def refresh(self):
         pass
+
+    def settle(self):
+        """Run after refresh(). Widgets added to a visible card get shown by Qt later, from a queued call - and in
+        some flows (a refresh right after the page is first shown) that call never arrives, which left My PC with
+        an empty "Your screens" card and health cards stretched to fill the gap until the window was resized. Show
+        them now, exactly as Qt would (never a widget that was hidden on purpose), then ask for a layout pass."""
+        for w in self.widget().findChildren(QWidget):
+            if (w.isHidden() and not w.testAttribute(Qt.WA_WState_ExplicitShowHide)
+                    and w.parentWidget() is not None and w.parentWidget().isVisible()):
+                w.show()
+        self.widget().updateGeometry()

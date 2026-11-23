@@ -127,6 +127,7 @@ def stylesheet(p=None):
     QPushButton#TopNav:hover {{ color:{p['text']}; background:{rgba(p['text'], 0.03)}; }}
     QPushButton#TopNav:checked {{ color:{p['text']}; border-bottom:3px solid {p['accent']};
         background:{rgba(p['text'], 0.05)}; }}
+    QPushButton#TopNav[tight="true"] {{ padding:22px 7px 19px 7px; }}
     #Card {{ background:{rgba(p['surface'], 0.92)}; border:1px solid {p['border']}; border-radius:0; }}
     #Panel {{ background:{rgba(p['text'], 0.94)}; border:none; }}
     #Panel QLabel {{ color:{p['bg']}; }}

@@ -27,11 +27,12 @@ def render(renderer, size):
 
 
 def main():
-    app = QGuiApplication(sys.argv)  # noqa: F841 - Qt needs an app for painting
+    app = QGuiApplication(sys.argv)          # Qt needs an app for painting
     renderer = QSvgRenderer(str(ROOT / "assets" / "logo.svg"))
     images = [render(renderer, s) for s in SIZES]
     out = ROOT / "assets" / "app.ico"
     images[-1].save(out, format="ICO", sizes=[(s, s) for s in SIZES], append_images=images[:-1])
+    app.quit()
     images[-1].save(ROOT / "assets" / "app.png")
     print(f"wrote {out}")
 

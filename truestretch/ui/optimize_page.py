@@ -150,11 +150,12 @@ class OptimizePage(Page):
         self.btn_scan = button("Scan again", "refresh", "Ghost", self.scan)
         self.btn_undo_all = button("Undo all", "undo", "Ghost", lambda: self.undo(None))
         self.btn_apply = button("Optimize", None, "Primary", self.apply_selected)
-        buttons = hbox(self.btn_scan, self.btn_undo_all, self.btn_apply, spacing=8)
-        top = Reflow(breakpoint=1000, spacing=26)
-        top.add(score_box)
-        top.add(stats)
-        top.add(None)
+        buttons = hbox(None, self.btn_scan, self.btn_undo_all, self.btn_apply, spacing=8)
+        # Wide: score · counts · … · buttons. Narrow (< 1000 px): score and counts stay side by side, only the
+        # buttons move under them - the card used to stack all four and grow past 300 px tall.
+        numbers = hbox(score_box, 26, stats, None, spacing=0)
+        top = Reflow(breakpoint=1000, spacing=18)
+        top.add(numbers, 1)
         top.add(buttons)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)

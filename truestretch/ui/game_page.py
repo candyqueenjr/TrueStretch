@@ -1,6 +1,7 @@
 """The per-game page: what you'll play at (stretch size) first, everything else in tabs below."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QDialog, QHeaderView, QLabel,
                                QMessageBox, QScrollArea, QSpinBox, QTabWidget, QTreeWidget, QTreeWidgetItem, QWidget)
 
@@ -69,6 +70,9 @@ class TroubleshootDialog(QDialog):
             head.addWidget(label(intro, "Muted", wrap=True))
         self.setLayout(vbox(head, scroll, hbox(None, button("Close", None, None, self.accept)),
                             spacing=12, margins=(24, 20, 24, 18)))
+
+
+GET_GAME = {"valorant": "https://playvalorant.com/download/"}
 
 
 def tab_page():
@@ -147,9 +151,15 @@ class GamePage(Page):
         self.checks_icon = QLabel()
         self.checks_line = label("", "Muted")
         self.checks_toggle = button("Show", None, "Subtle", self._toggle_checks)
+        # The one fix the page can't do by itself: when the game isn't on this PC, offer the download right here.
+        self.btn_get = button(f"Get {self.game.name}", "external", None,
+                              lambda: QDesktopServices.openUrl(QUrl(GET_GAME.get(self.gid, ""))),
+                              f"Opens the official {self.game.name} download page. Install it, then press Rescan.")
+        self.btn_get.hide()
         self.checks_bar = QWidget()
         self.checks_bar.setObjectName("Transparent")
-        self.checks_bar.setLayout(hbox(self.checks_icon, self.checks_line, self.checks_toggle, None, spacing=8))
+        self.checks_bar.setLayout(hbox(self.checks_icon, self.checks_line, self.checks_toggle, None, self.btn_get,
+                                       spacing=8))
         self.checks_grid = ResponsiveGrid(min_width=290, max_cols=3, spacing=14)
         self.check_rows = []
         card.add(top, divider(), self.checks_bar, self.checks_grid)
@@ -477,7 +487,7 @@ class GamePage(Page):
         p = palette()
         self.icon.setPixmap(game_pixmap(self.game, info, 40))
         where = str(info.install_dir) if info.installed else "Not found on this PC"
-        version = info.extra.get("version")
+        version = info.extra.get("version") if info.installed else None     # no "version 13.10 · not found"
         self.subtitle.setText(f"{self.game.publisher}  ·  " + (f"version {version}  ·  " if version else "")
                               + where)
         state = engine.match_state(self.gid)
@@ -523,21 +533,24 @@ class GamePage(Page):
         self.summary_caption.setText("Ready to play" if not bad else
                                      f"{len(bad)} thing{'s' if len(bad) > 1 else ''} to fix before you play")
         if bad:
-            self.checks_icon.setPixmap(icons.pixmap("alert", p["warning"], 18))
-            self.checks_line.setText(", ".join(c.title for c in bad[:2]) + (" …" if len(bad) > 2 else ""))
+            blocking = any(c.ok is False for c in bad)
+            self.checks_icon.setPixmap(icons.pixmap("x-circle" if blocking else "alert",
+                                                    p["danger" if blocking else "warning"], 18))
+            self.checks_line.setText(", ".join(c.headline for c in bad[:2]) + (" …" if len(bad) > 2 else ""))
         else:
             self.checks_icon.setPixmap(icons.pixmap("check-circle", p["success"], 18))
             self.checks_line.setText(f"All {len(checks)} checks passed")
         show_grid = bool(bad) or self._checks_open
         self.checks_toggle.setText("Hide" if show_grid else "Show")
         self.checks_toggle.setVisible(not bad)
+        self.btn_get.setVisible(not info.installed and self.gid in GET_GAME)
         self.checks_grid.setVisible(show_grid)
         if show_grid:
             if len(self.check_rows) != len(checks):
                 self.checks_grid.clear()
                 self.check_rows = [self.checks_grid.add(CheckRow()) for _ in checks]
             for row, c in zip(self.check_rows, sorted(checks, key=lambda c: c.ok is True)):
-                row.set(c.title, c.ok, c.detail)
+                row.set(c.headline, c.ok, c.detail)
 
         # stretch tab
         sizes = set(display.sizes(modes))

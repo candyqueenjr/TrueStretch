@@ -5,13 +5,15 @@ from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QGridLayout, QLabel, QListWidget, QListWidgetItem, QWidget
 
 from .. import APP_NAME, VERSION, display, displayconfig, health
-from ..paths import DATA_DIR, LOG_DIR
+from ..paths import DATA_DIR, LOG_DIR, log
 from ..system import open_path
 from . import icons
 from .base_page import Page
 from .theme import palette
 from .widgets import Badge, Card, button, clear_layout, divider, hbox, label, vbox
 
+SCALING_WORDS = {1: "none", 2: "centred (black bars)", 3: "stretched to full screen",
+                 4: "keeps the aspect ratio (black bars)", 5: "custom", 128: "driver default"}
 STATUS_ICON = {health.GOOD: ("check-circle", "success"), health.WARN: ("alert", "warning"),
                health.BAD: ("x-circle", "danger"), health.INFO: ("info", "info")}
 
@@ -147,44 +149,21 @@ class MyPcPage(Page):
                            if pc.laptop else "Desktop PC")
         self.hw["os"].set(pc.windows, f"Power: {pc.power_mode or pc.power_plan or 'default'}")
 
-        # screens
+        # screens - read, then shown row by row; if a display read fails halfway (a screen reconnecting, a driver
+        # reset) the card says so instead of being left empty, and the rest of the page still refreshes.
         clear_layout(self.screens.body)
-        head = vbox(label("Your screens", "H2"), label("What each screen really is, how it's connected and what it "
-                                                       "can do.", "Muted"), spacing=2, margins=(20, 16, 20, 12))
-        self.screens.body.addLayout(head)
-        used = engine.display_for(self.gid)
-        mons = {m.device: m for m in displayconfig.monitors()}
-        drivers = {m.device: dev for m, dev in engine.monitor_devices()}
-        for d in display.list_displays():
+        self.screens.body.addLayout(vbox(label("Your screens", "H2"),
+                                         label("What each screen is, what it can do and which graphics card "
+                                               "drives it.", "Muted"), spacing=2, margins=(20, 16, 20, 12)))
+        try:
+            self._add_screen_rows(p)
+        except Exception:
+            log.exception("Reading the screens failed")
+            clear_layout(self.screens.body)
+            self.screens.body.addLayout(vbox(label("Your screens", "H2"), margins=(20, 16, 20, 12)))
             self.screens.body.addWidget(divider())
-            modes = display.available_modes(d.device)
-            cur = display.current_mode(d.device)
-            native = d.native or (cur.size if cur else None)
-            rates = display.refresh_rates(modes, *native) if native else []
-            mon = mons.get(d.device)
-            ic = QLabel()
-            ic.setPixmap(icons.pixmap("monitor", p["muted"], 26))
-            badges = hbox(spacing=6)
-            if d.primary:
-                badges.addWidget(Badge("Main display", "info"))
-            if used and used.device == d.device:
-                badges.addWidget(Badge("Used for VALORANT", "accent"))
-            badges.addStretch(1)
-            facts = [f"Native {native[0]} × {native[1]}" if native else None,
-                     f"up to {rates[0]} Hz" if rates else None,
-                     f"now {cur}" if cur else None,
-                     f"scaling: {mon.scaling_name.lower()}" if mon else None,
-                     (f"monitor driver {'disabled' if drivers[d.device].disabled else 'on'}"
-                      if drivers.get(d.device) else None),
-                     f"runs on {d.gpu}"]
-            text = vbox(hbox(label(d.title, "H3"), label(f"Display {d.number}", "Faint"), None, spacing=8),
-                        label("  ·  ".join(f for f in facts if f), "Muted", wrap=True), badges, spacing=4)
-            row = hbox(ic, spacing=16, margins=(20, 14, 20, 14))
-            row.addLayout(text, 1)
-            holder = QWidget()
-            holder.setObjectName("Transparent")
-            holder.setLayout(row)
-            self.screens.body.addWidget(holder)
+            self.screens.body.addLayout(hbox(label("Couldn't read your screens just now — press Scan again.",
+                                                   "Muted", wrap=True), margins=(20, 14, 20, 14)))
 
         # health
         clear_layout(self.health_box)
@@ -218,6 +197,45 @@ class MyPcPage(Page):
             item = QListWidgetItem(f"{when:%H:%M:%S}   {text}")
             item.setForeground(QColor(colors.get(level, p["muted"])))
             self.activity.addItem(item)
+
+    def _add_screen_rows(self, p):
+        """One row per screen, added to the screens card as it's read."""
+        engine = self.engine
+        used = engine.display_for(self.gid)
+        mons = {m.device: m for m in displayconfig.monitors()}
+        drivers = {m.device: dev for m, dev in engine.monitor_devices()}
+        for d in display.list_displays():
+            modes = display.available_modes(d.device)
+            cur = display.current_mode(d.device)
+            native = d.native or (cur.size if cur else None)
+            rates = display.refresh_rates(modes, *native) if native else []
+            mon = mons.get(d.device)
+            ic = QLabel()
+            ic.setPixmap(icons.pixmap("monitor", p["muted"], 26))
+            badges = hbox(spacing=6)
+            if d.primary:
+                badges.addWidget(Badge("Main display", "info"))
+            if used and used.device == d.device:
+                badges.addWidget(Badge("Used for VALORANT", "accent"))
+            badges.addStretch(1)
+            scaling = SCALING_WORDS.get(mon.scaling, mon.scaling_name.lower()) if mon else None
+            driver = drivers.get(d.device)
+            facts = [f"{native[0]} × {native[1]}" + (f" up to {rates[0]} Hz" if rates else "") if native else None,
+                     f"now {cur}" if cur else None,
+                     f"Windows scaling: {scaling}" if scaling else None,
+                     ("monitor driver off (good for stretched res)" if driver.disabled else
+                      "monitor driver on (Play turns it off)") if driver else None,
+                     f"{mon.connection}" if mon and not mon.built_in else None,
+                     f"on the {d.gpu}" if d.gpu else None]
+            text = vbox(hbox(label(d.title, "H3"), label(f"Display {d.number}", "Faint"), None, spacing=8),
+                        label("  ·  ".join(f for f in facts if f), "Muted", wrap=True), badges, spacing=4)
+            row = hbox(ic, spacing=16, margins=(20, 14, 20, 14))
+            row.addLayout(text, 1)
+            holder = QWidget()
+            holder.setObjectName("Transparent")
+            holder.setLayout(row)
+            self.screens.body.addWidget(divider())
+            self.screens.body.addWidget(holder)
 
     def _facts(self):
         engine = self.engine

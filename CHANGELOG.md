@@ -2,6 +2,26 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] — 2026-11-23
+
+A design pass over every page, tab and dialog in both themes at 1280×800 and 900×620.
+
+### Changed
+- **Checks that fail say what's wrong** (`Check.problem` / `Check.headline` in `engine.py`): "VALORANT not found", "Riot Client not found", "Monitor drivers still on", "No account ticked", "1440 × 1080 isn't available on your display", "Stretch scaling isn't automatic". The one-line summary uses a red cross for a blocking problem and a yellow triangle for a warning.
+- **VALORANT page when the game is missing:** a Get VALORANT button next to the problem; no version shown for a game that isn't installed; the first-run tour no longer lists the missing game twice.
+- **Top navigation on narrow windows:** all five tabs keep their labels (tighter font and padding under 1000 px) instead of four icons and one word; buttons re-measure after the font change so labels aren't clipped when the window grows again.
+- **Optimize Max score card:** score and counts stay on one row on narrow windows, only the buttons wrap (232 px tall at 900 px instead of 320).
+- **Settings tab bar** is a centred `QTabBar` over a `QStackedWidget` (document-mode `QTabWidget` ignored the centre alignment).
+- **Matches summary cards** are top-aligned so captions line up when one subtitle wraps.
+- **My PC screen rows** in plain words (Windows scaling, monitor driver state, connection, graphics card).
+
+### Fixed
+- **My PC page could open half-empty** (empty "Your screens" card, health cards stretched to fill the space) until the window was resized: widgets added to a visible card during a refresh waited for Qt's queued show, which didn't arrive in that flow. `Page.settle()` (run by the window after every refresh) shows such widgets at once, as Qt would, and requests a layout pass. The screens section is also guarded: a failed display read shows a one-line note and the rest of the page still refreshes.
+
+### Internal
+- `tests/test_ui.py`: offscreen layout tests on the real window (check wording, Get VALORANT visibility, nav labels at 900/1100/1280, centred Settings tabs, score-card height, Matches alignment, My PC failure path). Added to `run_all.py`.
+- `tests/shots3.py` captures every page, tab and dialog (`SHOT_THEMES`, `SHOT_PAGES`, including welcome, update, troubleshooting, confirm and report dialogs).
+
 ## [2.0.0] — 2026-11-22
 
 A full audit of the UI, the code and player requests, and the fixes that came out of it.

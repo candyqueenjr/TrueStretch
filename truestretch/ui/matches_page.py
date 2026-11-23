@@ -28,6 +28,7 @@ class StatCard(Card):
         self.value = label("–", "Stat")
         self.sub = label("", "Faint", wrap=True)
         self.add(label(caption, "Caption"), self.value, self.sub)
+        self.body.addStretch(1)                 # all cards in a row share a height: keep the captions on one line
 
     def set(self, value, sub=""):
         self.value.setText(value)

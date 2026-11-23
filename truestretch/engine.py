@@ -32,6 +32,13 @@ class Check:
     title: str
     ok: object          # True, False (blocking), or None (warning / needs the user)
     detail: str
+    problem: str = ""   # how the line reads when the check fails ("VALORANT not found", not "VALORANT installed")
+
+    @property
+    def headline(self):
+        """The title to show: the problem wording when the check didn't pass, so a failing line never reads like
+        a success next to a warning icon."""
+        return self.problem if self.ok is not True and self.problem else self.title
 
 
 @dataclass
@@ -217,20 +224,24 @@ class Engine(QObject):
         size = f"{gs['width']} × {gs['height']}"
         return [
             Check("installed", f"{game.name} installed", info.installed,
-                  str(info.install_dir) if info.installed else f"{game.name} wasn't found on this PC."),
+                  str(info.install_dir) if info.installed else f"{game.name} wasn't found on this PC.",
+                  problem=f"{game.name} not found"),
             Check("configs", "Game settings files found", (bool(targets) and bool(selected)) or (None if not targets
                                                                                          else False),
                   f"{len(selected)} of {len(targets)} selected" if targets
-                  else f"Set up automatically after your first {game.name} session"),
+                  else f"Set up automatically after your first {game.name} session",
+                  problem="No account ticked" if targets else "No settings files yet"),
             Check("launcher", "Riot Client found", bool(info.launcher),
-                  str(info.launcher) if info.launcher else "Needed only for the Play button."),
+                  str(info.launcher) if info.launcher else "Needed only for the Play button.",
+                  problem="Riot Client not found"),
             Check("resolution", f"{size} works on your display", True if mode or self.closest_mode(gid) else False,
                   f"Ready at {mode.hz} Hz" if mode else
                   ("Added to your graphics driver automatically when you play" if self.closest_mode(gid) else
-                   "Your screen doesn't offer any narrower resolution — update the graphics driver (My PC)")),
+                   "Your screen doesn't offer any narrower resolution — update the graphics driver (My PC)"),
+                  problem=f"{size} isn't available on your display"),
             Check("monitors", "Monitor drivers off", None if self.monitor_drivers_on(gid) else True,
                   "Play stretched turns them off (admin prompt)" if self.monitor_drivers_on(gid)
-                  else "VALORANT can't read the 16:9 shape"),
+                  else "VALORANT can't read the 16:9 shape", problem="Monitor drivers still on"),
             self._scaling_check(gid),
         ]
 
@@ -238,12 +249,13 @@ class Engine(QObject):
         gs = self.gs(gid)
         mon = self.monitor(gid)
         title = "Picture stretched to full screen"
+        problem = "Stretch scaling isn't automatic"
         if mon and mon.stretches:
-            return Check("scaling", title, True, f"{mon.name}: scaling is set to stretch")
+            return Check("scaling", title, True, f"{mon.name}: scaling is set to stretch", problem=problem)
         if gs.get("auto_scaling", True):
-            return Check("scaling", title, True, "TrueStretch turns stretch scaling on when you play")
+            return Check("scaling", title, True, "TrueStretch turns stretch scaling on when you play", problem=problem)
         return Check("scaling", title, None, "Automatic scaling is off (Display tab) — set Full-screen scaling in your "
-                                             "graphics driver, or turn it back on")
+                                             "graphics driver, or turn it back on", problem=problem)
 
     def is_stretched(self, gid=None):
         return self.state.stretched and (gid is None or self.state.data.get("game") == gid)

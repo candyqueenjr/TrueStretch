@@ -53,6 +53,7 @@ class Engine(QObject):
     message = Signal(str, str)          # level (info|success|warning|error), text
     game_state = Signal(str, bool)      # game id, running
     history_changed = Signal()          # a finished match was added to the match history
+    ping_changed = Signal()             # new ping measurements were added to the ping history
 
     def __init__(self, settings):
         super().__init__()
@@ -859,6 +860,14 @@ class Engine(QObject):
                         self.notify("info", history.report_text(new[-1]))
             except Exception:
                 log.exception("Match report failed")
+            try:
+                from . import ping
+                from .games.valorant import LOG_DIR
+                before = len(ping.load())
+                if len(ping.update(LOG_DIR)) != before:
+                    self.ping_changed.emit()
+            except Exception:
+                log.exception("Ping history update failed")
             finally:
                 self._reporting = False
 

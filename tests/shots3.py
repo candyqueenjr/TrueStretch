@@ -32,7 +32,8 @@ OUT = Path(os.environ.get("SHOT_OUT", str(Path(__file__).resolve().parent / "out
 OUT.mkdir(parents=True, exist_ok=True)
 SIZES = [tuple(int(v) for v in s.split("x")) for s in os.environ.get("SHOT_SIZES", "1440x900,1100x760,900x620").split(",")]
 THEMES = os.environ.get("SHOT_THEMES", "dark").split(",")
-ALL_PAGES = ("game:valorant,game:valorant:accounts,game:valorant:display,game:valorant:launch,optimize,matches,"
+ALL_PAGES = ("game:valorant,game:valorant:servers,game:valorant:accounts,game:valorant:display,game:valorant:launch,"
+             "optimize,matches,"
              "matches:empty,mypc,settings,settings:backups,settings:about,welcome:0,welcome:2,welcome:3,welcome:4,"
              "update,troubleshoot,confirm,report")
 PAGES = os.environ.get("SHOT_PAGES", ALL_PAGES).split(",")
@@ -77,6 +78,24 @@ def demo_matches():
                      "slow_share": 0.004 if opt_on else 0.011, "latency": 5.2 if opt_on else 6.1, "gpu_busy": 0.4,
                      "limit": "cpu", "hitches": 0, "stretch": "1440 × 1080", "optimized": opt_on})
     return demo
+
+
+def demo_pings():
+    """Example ping measurements (nobody's real connection): Europe, 9 game starts, Frankfurt preferred and lowest."""
+    base = {"aws-euc1-prod.eu-gp-frankfurt-1": 24, "aws-euw3-prod.eu-gp-paris-1": 31, "aws-euw2-prod.eu-gp-london-1": 36,
+            "aws-waw1-prod.eu-gp-warsaw-1": 38, "aws-eun1-prod.eu-gp-stockholm-1": 42, "aws-eus2-prod.eu-gp-madrid-1": 47,
+            "aws-ist1-prod.eu-gp-istanbul-2": 61, "aws-ksa1-prod.eu-gp-riyadh-1": 98, "aws-aps1-prod.eu-gp-mumbai-1": 142,
+            "aws-afs1-prod.eu-gp-capetown-1": 171, "aws-apne1-prod.eu-gp-tokyo-1": 251}
+    demo, t0 = [], datetime(2026, 11, 12, 18, 30)
+    for i in range(9):
+        pods = {pod: ms + (i * 7 + len(pod)) % 5 - 2 for pod, ms in base.items()}
+        demo.append({"when": (t0 + timedelta(hours=27 * i)).isoformat(timespec="seconds"), "pods": pods,
+                     "preferred": ["aws-euc1-prod.eu-gp-frankfurt-1"]})
+    return demo
+
+
+def demo_status():
+    return {"region": "eu", "name": "Europe", "entries": [], "older": [], "checked": datetime(2026, 11, 22, 20, 15)}
 
 
 FAKE_RELEASE = updater.Release(
@@ -144,6 +163,8 @@ def shoot_page(page, w, h, prefix):
         mp.render()
     elif key.startswith("game:") and tab:
         win.pages[key].show_tab(tab)
+        if tab == "servers":
+            win.pages[key].servers.set_demo(demo_pings(), demo_status(), now=datetime(2026, 11, 22, 20, 0))
         win.pages[key].refresh()
     elif key == "settings" and tab:
         win.pages["settings"].show_tab(tab)

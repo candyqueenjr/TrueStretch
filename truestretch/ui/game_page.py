@@ -13,6 +13,7 @@ from . import icons
 from .base_page import Page, fill_combo, quiet
 from .theme import palette
 from .responsive import Reflow, ResponsiveGrid
+from .servers_tab import ServersTab
 from .widgets import (Badge, Card, CheckRow, ResolutionTile, Segmented, SettingsGroup, ToggleSwitch, button,
                       divider, game_pixmap, hbox, label, vbox)
 
@@ -98,6 +99,7 @@ class GamePage(Page):
         self.tabs.setDocumentMode(True)
         self.content.addWidget(self.tabs)
         self._build_resolution_tab()
+        self._build_servers_tab()
         self._build_accounts_tab()
         self._build_display_tab()
         self._build_launch_tab()
@@ -172,7 +174,7 @@ class GamePage(Page):
     # ---- tab: stretch -----------------------------------------------------
 
     def show_tab(self, name):
-        names = {"resolution": 0, "accounts": 1, "display": 2, "launch": 3, "guide": 0}
+        names = {"resolution": 0, "servers": 1, "accounts": 2, "display": 3, "launch": 4, "guide": 0}
         self.tabs.setCurrentIndex(names.get(name, 0))
 
     def troubleshoot(self, intro=None):
@@ -261,6 +263,14 @@ class GamePage(Page):
             self._pick_size(w, h)
 
     # ---- tab: accounts ----------------------------------------------------
+
+    def _build_servers_tab(self):
+        """The ping board: VALORANT's own ping to every server, kept by TrueStretch (ui/servers_tab.py)."""
+        page, layout = tab_page()
+        self.servers = ServersTab(self.engine, self.gid, self.window)
+        layout.addWidget(self.servers)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "Servers")
 
     def _build_accounts_tab(self):
         page, layout = tab_page()
@@ -600,10 +610,12 @@ class GamePage(Page):
 
         tab = self.tabs.currentIndex()
         if tab == 1:
-            self._fill_tree(targets)
+            self.servers.refresh()
         elif tab == 2:
-            self._refresh_display_tab(d, modes)
+            self._fill_tree(targets)
         elif tab == 3:
+            self._refresh_display_tab(d, modes)
+        elif tab == 4:
             self._refresh_launch_tab(info)
 
     def _refresh_display_tab(self, d, modes):

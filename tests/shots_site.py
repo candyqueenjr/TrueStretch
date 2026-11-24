@@ -109,6 +109,24 @@ for i in range(24):
 mp.records = demo
 mp.render()
 save(win, "matches.png")
+# Example ping measurements for the website (nobody's real connection): Europe, 9 game starts, Frankfurt preferred.
+base = {"aws-euc1-prod.eu-gp-frankfurt-1": 24, "aws-euw3-prod.eu-gp-paris-1": 31, "aws-euw2-prod.eu-gp-london-1": 36,
+        "aws-waw1-prod.eu-gp-warsaw-1": 38, "aws-eun1-prod.eu-gp-stockholm-1": 42, "aws-eus2-prod.eu-gp-madrid-1": 47,
+        "aws-ist1-prod.eu-gp-istanbul-2": 61, "aws-ksa1-prod.eu-gp-riyadh-1": 98, "aws-aps1-prod.eu-gp-mumbai-1": 142,
+        "aws-afs1-prod.eu-gp-capetown-1": 171, "aws-apne1-prod.eu-gp-tokyo-1": 251}
+pings, t0 = [], datetime(2026, 11, 12, 18, 30)
+for i in range(9):
+    pings.append({"when": (t0 + timedelta(hours=27 * i)).isoformat(timespec="seconds"),
+                  "pods": {pod: ms + (i * 7 + len(pod)) % 5 - 2 for pod, ms in base.items()},
+                  "preferred": ["aws-euc1-prod.eu-gp-frankfurt-1"]})
+win.navigate("game:valorant")
+game.show_tab("servers")
+pump()
+game.servers.set_demo(pings, {"region": "eu", "name": "Europe", "entries": [], "older": [],
+                              "checked": datetime(2026, 11, 22, 20, 15)}, now=datetime(2026, 11, 22, 20, 0))
+game.refresh(); game.settle()
+pump(0.6)
+save(card_of(game.servers.board), "servers.png")
 win.navigate("mypc")
 pump(0.8)
 save(win, "mypc.png")

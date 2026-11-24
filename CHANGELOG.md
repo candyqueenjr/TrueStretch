@@ -2,6 +2,20 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — 2026-11-24
+
+### Added
+- **Servers tab** on the VALORANT page (`ping.py`, `ui/servers_tab.py`): VALORANT's own ping to every game server of the player's region, measured by the game at each start and read from `ShooterGame.log` (`Party_FetchPlayer` lines; the account ID on the same line is never kept).
+  - Measurements are kept in `%APPDATA%\TrueStretch\ping.json` (atomic writes, last 400, damaged file moved aside) so the history survives VALORANT deleting its logs; updated in the background after each match and when the tab is opened.
+  - Board: every server lowest-ping first, bar for the current ping, mark for the two-week median, tags for VALORANT's preferred server and the lowest one, tooltips with best/worst; cards for *Your server*, *Lowest ping* and *Between game starts*.
+  - Insights: preferred vs lowest server, ping quality, between-session steadiness with the matching Network Buffering advice.
+  - Riot's public status feed for the region (incidents and maintenance for Windows, English, newest first; notices older than 30 days counted separately), fetched in a worker thread, with a link to the status page.
+- `tests/test_ping.py` (parsing, ID stripping, history file, board statistics, insights, status parsing — offline), in `run_all.py` and the CI list; Servers-tab layout checks in `tests/test_ui.py`.
+
+### Changed
+- `StatCard` moved to `ui/widgets.py` (shared by Matches and Servers).
+- `tests/shots3.py` and `tests/shots_site.py` capture the Servers tab with example data; `docs/assets/screens/servers.png` added to the website and README.
+
 ## [2.0.1] — 2026-11-23
 
 A design pass over every page, tab and dialog in both themes at 1280×800 and 900×620.

@@ -13,26 +13,13 @@ from . import icons
 from .base_page import Page
 from .responsive import ResponsiveGrid
 from .theme import palette
-from .widgets import Card, button, clear_layout, hbox, label, vbox
+from .widgets import Card, StatCard, button, clear_layout, hbox, label, vbox
 
 CHART_MATCHES = 30
 
 
 class _Bridge(QObject):
     loaded = Signal(object)
-
-
-class StatCard(Card):
-    def __init__(self, caption):
-        super().__init__(padding=16, spacing=2)
-        self.value = label("–", "Stat")
-        self.sub = label("", "Faint", wrap=True)
-        self.add(label(caption, "Caption"), self.value, self.sub)
-        self.body.addStretch(1)                 # all cards in a row share a height: keep the captions on one line
-
-    def set(self, value, sub=""):
-        self.value.setText(value)
-        self.sub.setText(sub)
 
 
 class FpsChart(QWidget):

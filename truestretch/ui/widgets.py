@@ -193,6 +193,22 @@ class Card(QFrame):
                 painter.drawRect(QRectF(x if dx > 0 else x - t, y if dy > 0 else y - size, t, size))
 
 
+class StatCard(Card):
+    """Caption, big value, one line under it. All cards in a row share a height: the body stretch keeps the
+    captions on one line when a neighbour's subtitle wraps."""
+
+    def __init__(self, caption):
+        super().__init__(padding=16, spacing=2)
+        self.value = label("–", "Stat")
+        self.sub = label("", "Faint", wrap=True)
+        self.add(label(caption, "Caption"), self.value, self.sub)
+        self.body.addStretch(1)
+
+    def set(self, value, sub=""):
+        self.value.setText(value)
+        self.sub.setText(sub)
+
+
 class Badge(QLabel):
     def __init__(self, text="", kind="info", parent=None):
         super().__init__(text, parent)

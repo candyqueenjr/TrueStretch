@@ -183,6 +183,47 @@ pc.refresh()
 pump(0.3)
 check(pc.screens.body.count() > 2, "the screens come back on the next refresh")
 
+# ---- Servers tab (2.1): the ping board ----------------------------------------------------------------------------
+from datetime import datetime, timedelta                    # noqa: E402
+
+win.resize(900, 620)
+pump(0.3)
+win.navigate("game:valorant")
+game.show_tab("servers")
+pump(0.3)
+check(game.tabs.tabText(game.tabs.currentIndex()) == "Servers", "the VALORANT page has a Servers tab")
+servers = game.servers
+check(servers.isVisible() and servers.board.isVisible(), "the Servers tab shows the ping board")
+demo = []
+base = {"aws-euc1-prod.eu-gp-frankfurt-1": 24, "aws-euw3-prod.eu-gp-paris-1": 31, "aws-ksa1-prod.eu-gp-riyadh-1": 98,
+        "aws-apne1-prod.eu-gp-tokyo-1": 251}
+t0 = datetime(2026, 11, 12, 18, 30)
+for i in range(5):
+    demo.append({"when": (t0 + timedelta(days=i)).isoformat(timespec="seconds"),
+                 "pods": {pod: ms + i % 3 for pod, ms in base.items()}, "preferred": ["aws-euc1-prod.eu-gp-frankfurt-1"]})
+servers.set_demo(demo, {"region": "eu", "name": "Europe", "entries": [], "older": [], "checked": t0}, now=t0 + timedelta(days=5))
+pump(0.3)
+game.settle()
+pump(0.2)
+check(len(servers.board.rows) == 4 and servers.board.rows[0]["city"] == "Frankfurt", "the board lists every server, lowest first")
+check(servers.board.height() >= servers.board.HEAD + 4 * servers.board.ROW, f"the board is tall enough for its rows ({servers.board.height()} px)")
+check(servers.cards["server"].value.text() == "25 ms" and "Frankfurt" in servers.cards["server"].sub.text(),
+      f"the 'Your server' card shows VALORANT's pick ({servers.cards['server'].value.text()})")
+check(servers.cards["steady"].value.text() == "24–26 ms" and "steady" in servers.cards["steady"].sub.text(),
+      f"the steadiness card shows the spread ({servers.cards['steady'].value.text()} / {servers.cards['steady'].sub.text()})")
+check(servers.insights.count() >= 2, f"insights are shown ({servers.insights.count()})")
+check(servers.status_badge.isVisible() and servers.status_badge.text() == "All good", "Riot status: All good")
+check(servers.width() <= 900 and servers.board.width() >= 500, f"the board fits a 900 px window ({servers.board.width()} px)")
+cards = [c for c in servers.cards.values()]
+check(all(c.isVisible() and c.height() < 160 for c in cards), f"stat cards are compact ({[c.height() for c in cards]})")
+win.resize(1280, 800)
+pump(0.3)
+check(servers.board.width() >= 900, f"the board grows with the window ({servers.board.width()} px)")
+servers.set_demo([], None)
+pump(0.2)
+check(servers.cards["server"].value.text() == "–" and servers.insights.count() == 1 and not servers.status_badge.isVisible(),
+      "without measurements the tab explains what will appear")
+
 win.quit()
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

@@ -1,10 +1,11 @@
 """Main window: top bar (navigation + PLAY), pages, footer, tray icon, and the play / restore flows."""
 
 import ctypes
+import threading
 from ctypes import wintypes
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QFrame, QLabel, QMainWindow, QMenu,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QFrame, QLab
 from .. import APP_NAME, VERSION, display
 from ..engine import MonitorDriversOn, StretchError
 from ..paths import log, resource_path
+from ..readcache import reads
 from ..system import set_dark_title_bar
 from . import icons, theme
 from .game_page import GamePage
@@ -24,6 +26,22 @@ from .welcome import WelcomeDialog
 from .widgets import Badge, FocusRing, TacticalButton, Toast, button, game_pixmap, hbox, label, vbox
 
 LOGO = resource_path("assets/logo.svg")
+
+
+class _Background(QObject):
+    """Carries a worker thread's result back to the UI thread."""
+    done = Signal(object, object)       # result, exception
+
+
+class _WindowRef:
+    """What a background fix gets instead of the window: the native handle, read on the UI thread beforehand
+    (UAC prompts are parented to it), and nothing else - widgets must not be touched from a worker thread."""
+
+    def __init__(self, hwnd):
+        self._hwnd = hwnd
+
+    def winId(self):
+        return self._hwnd
 WM_HOTKEY = 0x0312
 HOTKEY_ID = 0x5453
 MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x1, 0x2, 0x4000
@@ -172,6 +190,7 @@ class MainWindow(QMainWindow):
         self._quitting = False
         self._tray_hint_shown = False
         self._current = None
+        self._busy = None               # caption of the background step running right now (see run_background)
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self.setMinimumSize(900, 600)
@@ -199,17 +218,18 @@ class MainWindow(QMainWindow):
 
         self.pages = {}
         self.gid = next(iter(engine.games))
-        self._build_pages()
-        self.navigate(f"game:{self.gid}")
+        with reads():                   # one display query serves every page built here, not 33
+            self._build_pages()
+            self.navigate(f"game:{self.gid}")
 
-        self._build_tray()
-        self._register_hotkey()
-        engine.changed.connect(self.refresh_all)
-        engine.message.connect(self.on_message)
-        self.footer_timer = QTimer(self)
-        self.footer_timer.timeout.connect(self._refresh_footer)
-        self.footer_timer.start(3000)
-        self.refresh_all()
+            self._build_tray()
+            self._register_hotkey()
+            engine.changed.connect(self.refresh_all)
+            engine.message.connect(self.on_message)
+            self.footer_timer = QTimer(self)
+            self.footer_timer.timeout.connect(self._refresh_footer)
+            self.footer_timer.start(3000)
+            self.refresh_all()
 
     # ---- layout -----------------------------------------------------------
 
@@ -305,25 +325,64 @@ class MainWindow(QMainWindow):
 
     def refresh_all(self):
         """Only the page on screen is redrawn; the others refresh when they're opened (keeps the app snappy)."""
-        self._paint_nav_icons()
-        page = self.pages.get(self._current)
-        if page is not None and self.isVisible() and not self.isMinimized():   # hidden: refreshed when shown
-            self._refresh_page(page)
-        self._refresh_top()
-        self._refresh_footer()
-        self._refresh_tray()
+        with reads():
+            self._paint_nav_icons()
+            page = self.pages.get(self._current)
+            if page is not None and self.isVisible() and not self.isMinimized():   # hidden: refreshed when shown
+                self._refresh_page(page)
+            self._refresh_top()
+            self._refresh_footer()
+            self._refresh_tray()
 
     def _refresh_page(self, page):
         try:
-            page.refresh()
-            page.settle()
+            with reads():               # the display is asked once per refresh, however many widgets ask
+                page.refresh()
+                page.settle()
         except Exception:
             log.exception("Refreshing %s failed", type(page).__name__)
+
+    # ---- background steps -------------------------------------------------
+
+    def run_background(self, caption, work, done):
+        """Runs work() in a worker thread so the window keeps drawing (administrator prompts, pnputil and driver
+        calls take seconds; before 2.2.0 the window froze for up to a minute). The PLAY button shows `caption`
+        meanwhile. done(result, error) runs on the UI thread afterwards; error is the exception work() raised."""
+        if self._busy:
+            self.engine.notify("info", f"Still busy: {self._busy.lower()}…")
+            return False
+        self._busy = caption
+        self._refresh_top()
+        bridge = _Background(self)
+
+        def finish(result, error):
+            self._busy = None
+            bridge.deleteLater()
+            try:
+                done(result, error)
+            finally:
+                self.refresh_all()
+
+        bridge.done.connect(finish, Qt.QueuedConnection)
+
+        def run():
+            try:
+                bridge.done.emit(work(), None)
+            except Exception as exc:    # every error reaches the UI thread; none dies silently in the worker
+                bridge.done.emit(None, exc)
+
+        threading.Thread(target=run, name="background-step", daemon=True).start()
+        return True
 
     def _refresh_top(self):
         e, gid = self.engine, self.gid
         running = e.running.get(gid)
-        if running:
+        if self._busy:
+            text, kind = self._busy.upper() + "…", "info"
+            self.play_btn.setText("Working…")
+            self.play_btn.setEnabled(False)
+            self.play_btn.setToolTip(self._busy + "…")
+        elif running:
             state = e.match_state(gid)
             text, kind = (("IN MATCH · STRETCHED", "accent") if e.is_stretched(gid) else
                           ("IN MATCH", "warning") if state == "in match" else ("MENU · NATIVE", "success"))
@@ -473,16 +532,21 @@ class MainWindow(QMainWindow):
             self.engine.prepare(gid)
         except MonitorDriversOn:
             # Play stretched = consent. Windows shows its own administrator prompt; nothing else to answer.
+            # pnputil runs in the background so the window keeps drawing; Play continues once it's done.
             self.engine.notify("info", "Turning the monitor drivers off (Windows asks for permission once)…")
-            try:
-                self.engine.set_monitor_drivers(False, int(self.winId()))
-            except StretchError as err:
-                self._error(str(err))
-                return
-            if self.engine.monitor_drivers_on(gid):
-                self._error("Some monitor drivers are still on. Restart your PC, then press Play stretched.")
-                return
-            self.play(gid, launch)
+            hwnd = int(self.winId())
+
+            def done(_result, error):
+                if error is not None:
+                    self._error(str(error) if isinstance(error, StretchError)
+                                else f"Couldn't change the monitor drivers: {error}")
+                elif self.engine.monitor_drivers_on(gid):
+                    self._error("Some monitor drivers are still on. Restart your PC, then press Play stretched.")
+                else:
+                    self.play(gid, launch)
+
+            self.run_background("Turning monitor drivers off",
+                                lambda: self.engine.set_monitor_drivers(False, hwnd), done)
             return
         except StretchError as exc:
             self._error(str(exc))
@@ -535,6 +599,16 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._run_fix(item))
 
     def _run_fix(self, item):
+        if getattr(item, "background", None):
+            ref = _WindowRef(int(self.winId()))
+
+            def done(_result, error):
+                if error is not None:
+                    self._error(str(error) if isinstance(error, (StretchError, OSError, display.DisplayError))
+                                else f"{item.fix_label} failed: {error}")
+
+            self.run_background(item.background, lambda: item.fix(ref), done)
+            return
         try:
             undo = item.fix(self)
         except (StretchError, OSError, display.DisplayError) as exc:

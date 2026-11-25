@@ -6,6 +6,8 @@ import winreg
 from ctypes import wintypes
 from dataclasses import dataclass
 
+from .readcache import memo
+
 
 class DEVMODEW(ctypes.Structure):
     _fields_ = [
@@ -163,7 +165,11 @@ def _devmode():
 
 
 def list_displays():
-    """Monitors attached to the desktop, main display first."""
+    """Monitors attached to the desktop, main display first (cached inside a UI refresh, see readcache)."""
+    return memo("list_displays", _list_displays)
+
+
+def _list_displays():
     try:
         from .displayconfig import monitors
         named = {m.device: m for m in monitors()}
@@ -225,7 +231,12 @@ def current_mode(device=None):
 
 
 def available_modes(device=None):
-    """Every mode the driver offers for this display, biggest first, highest refresh first."""
+    """Every mode the driver offers for this display, biggest first, highest refresh first (cached inside a UI
+    refresh, see readcache)."""
+    return memo(("available_modes", device), lambda: _available_modes(device))
+
+
+def _available_modes(device=None):
     modes = set()
     i = 0
     while True:
@@ -253,7 +264,12 @@ def refresh_rates(modes, width, height):
 
 def mode_accepted(mode, device=None):
     """True if the driver would switch to this mode - also custom resolutions Windows doesn't list
-    (with the monitor driver disabled, NVIDIA accepts sizes that never appear in the mode list)."""
+    (with the monitor driver disabled, NVIDIA accepts sizes that never appear in the mode list). A driver probe,
+    so cached inside a UI refresh (see readcache)."""
+    return memo(("mode_accepted", mode, device), lambda: _mode_accepted(mode, device))
+
+
+def _mode_accepted(mode, device=None):
     dm = _devmode()
     dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency = mode.width, mode.height, mode.hz
     dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY

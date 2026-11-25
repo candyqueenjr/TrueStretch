@@ -22,7 +22,8 @@ STATE_BADGE = {
     opt.INFO: ("Info", "info"), opt.UNAVAILABLE: ("Not available", "info"), opt.IN_GAME: ("Set in game", "warning"),
 }
 LEVEL = {3: "High", 2: "Medium", 1: "Low"}
-FILTERS = [("todo", "To do"), ("optional", "Optional"), ("done", "Already optimal"), ("all", "Everything")]
+FILTERS = [("todo", "To do"), ("in_game", "Set in game"), ("optional", "Optional"), ("done", "Already optimal"),
+           ("all", "Everything")]
 
 
 class _Bridge(QObject):

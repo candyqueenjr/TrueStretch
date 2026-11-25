@@ -2,6 +2,25 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] — 2026-11-25
+
+Code-health day: slow Windows calls off the UI thread, power-plan values through the Windows API, one display query per refresh.
+
+### Added
+- **Set in game filter** on the Optimize Max page (the six settings only VALORANT's own menu can change had a count in the header but no filter of their own).
+- **Background steps** (`MainWindow.run_background`): the monitor-driver switch (from Play stretched and from the My PC fixes, `Health.background`) runs in a worker thread; the PLAY button reads *Working…* with the step named in the badge next to it, and Play continues by itself when it's done. Errors in the worker are delivered to the UI thread and shown once.
+- `truestretch/powerplan.py`: the active power plan through `powrprof.dll` (`PowerGetActiveScheme`, `PowerReadACValueIndex` / `PowerReadDCValueIndex`, `PowerWriteACValueIndex` + `PowerSetActiveScheme`), with powercfg's aliases (`SUB_PROCESSOR`, `PROCTHROTTLEMIN`, `PERFBOOSTMODE`, `CPMINCORES`, `SUB_PCIEXPRESS`, `ASPM`) resolved to GUIDs.
+- `truestretch/readcache.py`: a thread-local, per-refresh read cache. `display.list_displays`, `display.available_modes`, `display.mode_accepted`, `displayconfig.monitors` and `monitors.list_monitor_devices` answer from it inside `with reads():` (the window wraps construction and every page refresh in one) and stay live everywhere else, so the engine always reads the screen back fresh after changing it.
+- `tests/test_powerplan.py` (GUID handling; every power row's API value compared with `powercfg /qh` where that text exists; a real 100 → 99 → 100 write-and-restore of core parking) and `tests/test_readcache.py` (caching rules, thread isolation, the readers wired through it) — both in `run_all.py` and the CI list. `tests/test_ui.py`: background step states and threading, display-call counts per refresh, the Set in game filter at 900 px.
+
+### Changed
+- **Optimize Max power rows read Windows' power API instead of parsing `powercfg` text.** The old parser looked for the English line "Current AC Power Setting Index", which powercfg translates — on every non-English Windows the six rows said *Not in this power plan* and could never be optimized. Apply and undo use the same API (no `powercfg /setactive` round trip).
+- **One elevated runner** `system.run_elevated(commands, hwnd, timeout, what)` for the monitor-driver switch and Optimize Max (two copies before, one of them reading the wrong last-error value). A command still running after its time limit raises `TimeoutError` with a sentence instead of surfacing exit code 259; the engine turns that into "Windows is still changing the monitor drivers — wait a moment and press Play stretched again".
+- Opening the window ran `QueryDisplayConfig` 33 times and listed the displays 21 times; a VALORANT page refresh 8 / 5, My PC 9 / 6. Each is now once per refresh.
+
+### Removed
+- `Engine._nvidia_stretches` (never called).
+
 ## [2.1.0] — 2026-11-24
 
 ### Added

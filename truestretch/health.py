@@ -20,6 +20,7 @@ class Health:
     detail: str
     fix_label: str = None
     fix: callable = None   # fix(window) -> None, or an undo callable when the screen changed
+    background: str = None  # caption shown while fix() runs in a worker thread (admin prompts, pnputil)
 
 
 def _months(days):
@@ -124,12 +125,14 @@ def checks(engine, gid):
         add(Health("monitor_driver", g, "Monitor drivers are off (needed)", GOOD,
                    "VALORANT can't read your screen's real 16:9 shape, so it doesn't squeeze the stretched picture "
                    "back. Your screens keep working; brightness keys may not work on some laptops until you turn "
-                   "them back on.", "Turn back on", lambda win: engine.set_monitor_drivers(True, int(win.winId()))))
+                   "them back on.", "Turn back on", lambda win: engine.set_monitor_drivers(True, int(win.winId())),
+                   background="Turning monitor drivers back on"))
     elif on:
         add(Health("monitor_driver", g, f"Monitor driver{'s' if len(on) > 1 else ''} still on", WARN,
                    f"{', '.join(dv.description for dv in on)}: VALORANT reads the real 16:9 shape and squeezes the "
                    "stretch back. Every 2026 method turns them off before launching (one administrator prompt).",
-                   "Turn off (admin)", lambda win: engine.set_monitor_drivers(False, int(win.winId()))))
+                   "Turn off (admin)", lambda win: engine.set_monitor_drivers(False, int(win.winId())),
+                   background="Turning monitor drivers off"))
 
     # ---- other programs that rewrite game / display settings ----------------
     g = "Other programs"

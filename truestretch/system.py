@@ -13,6 +13,7 @@ from . import APP_NAME
 from .paths import is_frozen
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -39,6 +40,51 @@ kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+class SHELLEXECUTEINFOW(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
+                ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+                ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE),
+                ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+                ("dwHotKey", wintypes.DWORD), ("hIconOrMonitor", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
+
+
+shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFOW)]
+shell32.ShellExecuteExW.restype = wintypes.BOOL
+SEE_MASK_NOCLOSEPROCESS, SEE_MASK_FLAG_NO_UI = 0x40, 0x400
+ERROR_CANCELLED, WAIT_TIMEOUT = 1223, 0x102
+
+
+def run_elevated(commands, hwnd=None, timeout=60, what="the administrator command"):
+    """Runs cmd lines (joined with &) with ONE administrator prompt (UAC) and waits for them to finish.
+    Returns the exit code of the last command. Raises PermissionError when the player declines the prompt,
+    OSError when Windows can't start it, TimeoutError when it's still running after `timeout` seconds (the
+    process is left alone - it may still finish). Shared by the monitor-driver switch and Optimize Max."""
+    info = SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI
+    info.hwnd = hwnd
+    info.lpVerb = "runas"
+    info.lpFile = "cmd.exe"
+    info.lpParameters = '/c "' + " & ".join(commands) + '"'
+    info.nShow = 0                      # SW_HIDE
+    if not shell32.ShellExecuteExW(ctypes.byref(info)):
+        err = ctypes.get_last_error()
+        if err == ERROR_CANCELLED:
+            raise PermissionError("Administrator permission was declined.")
+        raise OSError(err, f"Couldn't start {what} (error {err}).")
+    if not info.hProcess:               # nothing to wait for (shouldn't happen with NOCLOSEPROCESS)
+        return 0
+    try:
+        waited = kernel32.WaitForSingleObject(info.hProcess, int(timeout * 1000))
+        if waited == WAIT_TIMEOUT:
+            raise TimeoutError(f"{what[0].upper() + what[1:]} is still running after {timeout} seconds.")
+        code = wintypes.DWORD()
+        kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
+        return code.value
+    finally:
+        kernel32.CloseHandle(info.hProcess)
 
 
 def running_processes():

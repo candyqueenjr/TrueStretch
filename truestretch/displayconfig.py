@@ -5,6 +5,8 @@ import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
 
+from .readcache import memo
+
 
 class LUID(ctypes.Structure):
     _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
@@ -141,7 +143,12 @@ def _info(struct, kind, adapter, target_id):
 
 
 def monitors():
-    """Every active monitor with its real name and settings. Empty list if Windows won't say."""
+    """Every active monitor with its real name and settings. Empty list if Windows won't say. Cached inside a
+    UI refresh (see readcache); live everywhere else, so set_scaling / set_mode always read back fresh."""
+    return memo("monitors", _monitors)
+
+
+def _monitors():
     paths, _, count, _ = _query()
     found = []
     for i in range(count):

@@ -16,7 +16,7 @@ from pathlib import Path
 from . import display, pcinfo
 from .inifile import IniFile, set_read_only
 from .paths import DATA_DIR, atomic_write_text, log
-from .system import flag_value, flags_with, reg_delete, reg_get, reg_set, running_processes
+from .system import flag_value, flags_with, reg_delete, reg_get, reg_set, run_elevated, running_processes
 
 UNDO_FILE = DATA_DIR / "optimizer-undo.json"
 GAME_EXE = "VALORANT-Win64-Shipping.exe"
@@ -94,30 +94,6 @@ def _reg_restore(root, key, data):
 
 def _dbg(root, key, name, value):
     return f"{ROOT_NAMES[root]}\\{key} → {name} = {value!r}"
-
-
-def run_elevated(commands, hwnd=None):
-    """Runs cmd lines with one administrator prompt. Returns the exit code; PermissionError if declined."""
-    from .monitors import SHELLEXECUTEINFOW
-    from ctypes import wintypes
-    info = SHELLEXECUTEINFOW()
-    info.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
-    info.fMask = 0x40 | 0x400
-    info.hwnd = hwnd
-    info.lpVerb = "runas"
-    info.lpFile = "cmd.exe"
-    info.lpParameters = '/c "' + " & ".join(commands) + '"'
-    info.nShow = 0
-    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
-        err = ctypes.GetLastError()
-        if err == 1223:
-            raise PermissionError("Administrator permission was declined.")
-        raise OSError(f"Couldn't start the administrator command (error {err}).")
-    ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, 60_000)
-    code = wintypes.DWORD()
-    ctypes.windll.kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
-    ctypes.windll.kernel32.CloseHandle(info.hProcess)
-    return code.value
 
 
 # ---- Windows ---------------------------------------------------------------------------------------------

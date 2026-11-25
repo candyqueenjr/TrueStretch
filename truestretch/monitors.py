@@ -9,6 +9,9 @@ import uuid
 from ctypes import wintypes
 from dataclasses import dataclass
 
+from .readcache import memo
+from .system import run_elevated
+
 MONITOR_CLASS = uuid.UUID("4d36e96e-e325-11ce-bfc1-08002be10318")
 DIGCF_PRESENT = 0x2
 SPDRP_DEVICEDESC = 0x0
@@ -26,14 +29,6 @@ class GUID(ctypes.Structure):
 class SP_DEVINFO_DATA(ctypes.Structure):
     _fields_ = [("cbSize", wintypes.DWORD), ("ClassGuid", GUID), ("DevInst", wintypes.DWORD),
                 ("Reserved", ctypes.c_void_p)]
-
-
-class SHELLEXECUTEINFOW(ctypes.Structure):
-    _fields_ = [("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
-                ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
-                ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE),
-                ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
-                ("dwHotKey", wintypes.DWORD), ("hIconOrMonitor", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
 
 
 setupapi = ctypes.WinDLL("setupapi")
@@ -84,6 +79,11 @@ def _prop(handle, data, prop):
 
 
 def list_monitor_devices():
+    """Every monitor in Device Manager (cached inside a UI refresh, see readcache)."""
+    return memo("monitor_devices", _list_monitor_devices)
+
+
+def _list_monitor_devices():
     guid = GUID.from_buffer_copy(MONITOR_CLASS.bytes_le)
     handle = setupapi.SetupDiGetClassDevsW(ctypes.byref(guid), None, None, DIGCF_PRESENT)
     if not handle or handle == INVALID_HANDLE:
@@ -119,25 +119,7 @@ def set_enabled(instance_ids, enabled, hwnd=None):
     """Disable or enable monitor devices through pnputil, with one administrator prompt.
     Returns the exit code (0 ok, 3010 = works after restart). Raises PermissionError if UAC was declined."""
     verb = "/enable-device" if enabled else "/disable-device"
-    commands = " & ".join(f'pnputil {verb} "{iid}"' for iid in instance_ids)
-    info = SHELLEXECUTEINFOW()
-    info.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
-    info.fMask = 0x40 | 0x400          # SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI
-    info.hwnd = hwnd
-    info.lpVerb = "runas"
-    info.lpFile = "cmd.exe"
-    info.lpParameters = f'/c "{commands}"'
-    info.nShow = 0                      # SW_HIDE
-    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
-        err = ctypes.get_last_error() or ctypes.GetLastError()
-        if err == 1223:                 # ERROR_CANCELLED: the user said no to the admin prompt
-            raise PermissionError("Administrator permission was declined.")
-        raise OSError(f"Couldn't start pnputil (error {err}).")
-    ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, 60_000)
-    code = wintypes.DWORD()
-    ctypes.windll.kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
-    ctypes.windll.kernel32.CloseHandle(info.hProcess)
-    return code.value
+    return run_elevated([f'pnputil {verb} "{iid}"' for iid in instance_ids], hwnd, timeout=120, what="pnputil")
 
 
 def open_device_manager():

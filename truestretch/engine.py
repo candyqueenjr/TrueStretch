@@ -569,16 +569,6 @@ class Engine(QObject):
         except OSError as exc:
             log.warning("Windows scaling not set: %s", exc)
 
-    def _nvidia_stretches(self, d):
-        if not d or d.vendor != "nvidia":
-            return False
-        try:
-            from . import nvidia
-            pos = display.desktop_position(d.device)
-            return any(t.stretches for t in nvidia.NvApi().targets() if pos and (t.x, t.y) == pos)
-        except OSError:
-            return False
-
     # ---- monitor drivers (Device Manager) ----------------------------------
 
     def monitor_devices(self):
@@ -605,6 +595,9 @@ class Engine(QObject):
             code = monitors.set_enabled(targets, enabled, hwnd)
         except PermissionError as exc:
             raise StretchError(f"{exc} Monitor drivers weren't changed.") from exc
+        except TimeoutError as exc:
+            raise StretchError("Windows is still changing the monitor drivers. Wait a moment and press Play "
+                               "stretched again - or restart your PC if it doesn't finish.") from exc
         except OSError as exc:
             raise StretchError(str(exc)) from exc
         still = [dev for _, dev in self.monitor_devices() if dev and dev.instance_id in targets

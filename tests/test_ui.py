@@ -225,5 +225,89 @@ check(servers.cards["server"].value.text() == "–" and servers.insights.count()
       "without measurements the tab explains what will appear")
 
 win.quit()
+# ---- background steps keep the window alive (2.2.0) -------------------------------
+import threading                                              # noqa: E402
+win.resize(1280, 800); pump(0.1)
+seen = {}
+
+
+def slow_work():
+    seen["thread"] = threading.current_thread().name
+    time.sleep(0.3)
+    return "ok"
+
+
+def done(result, error):
+    seen["result"], seen["error"], seen["done_thread"] = result, error, threading.current_thread().name
+
+
+started = win.run_background("Turning monitor drivers off", slow_work, done)
+check(started and win.play_btn.text() == "Working…" and not win.play_btn.isEnabled(),
+      "while a background step runs, PLAY says Working… and is disabled")
+check(win.top_status.text().upper().startswith("TURNING MONITOR DRIVERS OFF"),
+      f"the top badge shows the step ({win.top_status.text()})")
+check(win.run_background("Second", slow_work, done) is False, "a second step is refused while one runs")
+pump(0.8)
+check(seen.get("result") == "ok" and seen.get("error") is None, f"the result reaches done() ({seen})")
+check(seen.get("thread") != "MainThread" and seen.get("done_thread") == "MainThread",
+      f"work ran off the UI thread, done() on it ({seen.get('thread')}, {seen.get('done_thread')})")
+check(win._busy is None and win.play_btn.text() != "Working…", "PLAY is back to normal afterwards")
+
+
+def failing_work():
+    raise OSError("pnputil said no")
+
+
+seen.clear()
+win.run_background("Turning monitor drivers off", failing_work, done)
+pump(0.5)
+check(isinstance(seen.get("error"), OSError) and seen.get("result") is None,
+      "an exception in the worker reaches done() as error")
+check(win._busy is None, "busy state cleared after a failure too")
+
+# ---- display reads are cached inside a refresh (2.2.0) ----------------------------
+from truestretch import display as _display, readcache     # noqa: E402
+counts = {"displays": 0, "monitors": 0}
+orig_ld, orig_mon = _display._list_displays, displayconfig._monitors
+
+
+def counting_ld():
+    counts["displays"] += 1
+    return orig_ld()
+
+
+def counting_mon():
+    counts["monitors"] += 1
+    return orig_mon()
+
+
+_display._list_displays, displayconfig._monitors = counting_ld, counting_mon
+try:
+    win.navigate("game:valorant"); pump(0.1)
+    counts.update(displays=0, monitors=0)
+    win.refresh_all(); pump(0.05)
+    check(counts["displays"] <= 1 and counts["monitors"] <= 1,
+          f"one refresh of the VALORANT page lists the displays {counts['displays']}x and queries monitors "
+          f"{counts['monitors']}x (was 5 / 8)")
+    counts.update(displays=0, monitors=0)
+    win.navigate("mypc"); pump(0.1)
+    check(counts["displays"] <= 1 and counts["monitors"] <= 1,
+          f"opening My PC lists the displays {counts['displays']}x and queries monitors {counts['monitors']}x "
+          "(was 6 / 9)")
+    check(not readcache.active(), "no cache is left active after a refresh")
+finally:
+    _display._list_displays, displayconfig._monitors = orig_ld, orig_mon
+
+# ---- Optimize: Set in game filter (2.2.0) -----------------------------------------
+win.navigate("optimize"); pump(0.1)
+opt_page = win.pages["optimize"]
+check("in_game" in opt_page.filter_seg.buttons and opt_page.filter_seg.buttons["in_game"].text() == "Set in game",
+      "Optimize has a Set in game filter")
+win.resize(900, 620); pump(0.2)
+seg = opt_page.filter_seg
+check(all(b.width() >= b.sizeHint().width() - 2 for b in seg.buttons.values()) and seg.width() <= 880,
+      f"the five filter buttons fit at 900 px (segment {seg.width()} px)")
+win.resize(1280, 800); pump(0.1)
+
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

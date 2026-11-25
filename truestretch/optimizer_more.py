@@ -11,7 +11,7 @@ import subprocess
 import winreg
 from pathlib import Path
 
-from . import accesskeys, pagefile
+from . import accesskeys, pagefile, powerplan
 from .optimizer import (DONE, GAME_EXE, HKCU, HKLM, IMPROVE, IN_GAME, INFO, NO_WINDOW, OPTIONAL, UNAVAILABLE, Item,
                         _dbg, _reg, _reg_dword, _reg_restore, _reg_snapshot)
 from .system import running_processes
@@ -44,33 +44,24 @@ POWER = [  # id, title, subgroup, setting, target, names, why, impact, level, la
 ]
 
 
-def _powercfg(*args):
-    out = subprocess.run(["powercfg", *args], capture_output=True, text=True, creationflags=NO_WINDOW, timeout=15)
-    return out.returncode, out.stdout
-
-
 def _power_value(sub, setting):
-    code, out = _powercfg("/qh", "SCHEME_CURRENT", sub, setting)
-    m = re.search(r"Current AC Power Setting Index:\s*(0x[0-9a-fA-F]+)", out)
-    return (int(m.group(1), 16) if m else None), out
+    """The "plugged in" index of a setting in the active plan (None when the plan doesn't have it)."""
+    return powerplan.read_ac(sub, setting)
 
 
 def _power_set(sub, setting, value):
-    code, out = _powercfg("/setacvalueindex", "SCHEME_CURRENT", sub, setting, str(int(value)))
-    if code != 0:
-        raise OSError(f"powercfg refused ({out.strip() or code})")
-    _powercfg("/setactive", "SCHEME_CURRENT")
+    powerplan.write_ac(sub, setting, value)
 
 
 def power_items(pc):
     items = []
     for iid, title, sub, setting, want, names, why, impact, level, laptop_note in POWER:
-        value, raw = _power_value(sub, setting)
+        value = _power_value(sub, setting)
         if value is None:
             if iid == "wifi_power":
                 continue                     # no Wi-Fi adapter on this PC
             items.append(Item(iid, "Windows power", title, why, "Not in this power plan", "—", UNAVAILABLE, impact,
-                              level, debug=[f"powercfg /qh SCHEME_CURRENT {sub} {setting} → no AC value"]))
+                              level, debug=[f"powrprof PowerReadACValueIndex {sub} {setting} → not in the active plan"]))
             continue
         shown = (names or {}).get(value, f"{value}%" if names is None else str(value))
         target = (names or {}).get(want, f"{want}%" if names is None else str(want))
@@ -79,7 +70,7 @@ def power_items(pc):
             note += " Laptops run a little warmer while gaming."
         items.append(Item(iid, "Windows power", title, why, shown, target, DONE if value == want else IMPROVE,
                           impact, level, note=note,
-                          debug=[f"powercfg SCHEME_CURRENT {sub} {setting}: AC index = {value:#x}"],
+                          debug=[f"powrprof PowerReadACValueIndex {sub} {setting}: AC index = {value:#x}"],
                           _apply=lambda s=sub, st=setting, w=want: _power_set(s, st, w),
                           _snapshot=lambda v=value: v,
                           _restore=lambda d, s=sub, st=setting: _power_set(s, st, d)))

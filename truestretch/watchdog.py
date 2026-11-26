@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from . import display, displayconfig
+from . import display, displayconfig, gamecolor
 from .display import Mode
 from .paths import STATE_FILE, atomic_write_text, log
 from .system import launch_command, running_processes
@@ -61,6 +61,11 @@ def run(pid):
         ctypes.windll.kernel32.WaitForSingleObject(handle, INFINITE)
         ctypes.windll.kernel32.CloseHandle(handle)
     log.info("Watchdog: TrueStretch %s ended", pid)
+    try:
+        if gamecolor.restore_saved(only_owner=pid):     # the colour boost never outlives TrueStretch
+            log.info("Watchdog: Game Color put back")
+    except Exception:
+        log.exception("Watchdog couldn't put the colour back")
     while True:
         state = _read_state()
         if not state.get("stretched"):

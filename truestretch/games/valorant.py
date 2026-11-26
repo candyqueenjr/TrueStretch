@@ -102,6 +102,7 @@ class Valorant(Game):
             "patchline": "live", "launch_timeout_min": 10,
             "excluded": [], "nicknames": {}, "gpu_scaling_confirmed": False,
             "auto_scaling": True,
+            "game_color": False, "game_color_level": "medium",
         }
 
     # ---- detection --------------------------------------------------------

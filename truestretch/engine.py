@@ -6,7 +6,7 @@ from datetime import datetime
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from . import display, displayconfig, monitors, pcinfo
+from . import display, displayconfig, gamecolor, monitors, pcinfo
 from .backups import BackupManager
 from .display import DisplayError, Mode
 from .games import GAMES
@@ -75,6 +75,13 @@ class Engine(QObject):
         self._revert_retry = None           # (reason, monotonic time) when switching back failed and must be retried
         self._revert_error_shown = False
         self._poll_errors = set()           # errors in poll() already reported (each shown once, never a flood)
+        self.color = gamecolor.GameColor()  # Game Color: vivid colours only while the game is in front
+        self._color_device = (0.0, None)    # (monotonic time, device) - the game's screen, looked up every 5 s
+        try:
+            if self.color.recover():
+                log.info("Game Color left on by a crash was put back")
+        except Exception:
+            log.exception("Game Color recovery failed")
         self._migrate_settings()
         self.timer = QTimer(self)
         self.timer.setInterval(POLL_MS)
@@ -758,6 +765,7 @@ class Engine(QObject):
         try:
             self._poll()
             self._retry_revert()
+            self._tick_color()
         except Exception as exc:
             key = f"{type(exc).__name__}: {exc}"
             if key not in self._poll_errors:
@@ -765,6 +773,71 @@ class Engine(QObject):
                 log.exception("Watching the game failed")
                 self.notify("error", f"Something went wrong while watching the game ({exc}). TrueStretch keeps "
                                      "running; details are in the log.")
+
+    # ---- Game Color -------------------------------------------------------
+
+    COLOR_GAME = "valorant"
+
+    def color_settings(self, gid=COLOR_GAME):
+        gs = self.gs(gid)
+        return bool(gs.get("game_color")), gamecolor.LEVEL_PERCENT.get(gs.get("game_color_level"), 50)
+
+    def color_device(self, gid=COLOR_GAME, fresh=False):
+        when, device = self._color_device
+        if fresh or time.monotonic() - when > 5:
+            d = self.display_for(gid)
+            device = d.device if d else None
+            self._color_device = (time.monotonic(), device)
+        return device
+
+    def color_screen(self, gid=COLOR_GAME):
+        """(Screen, None) for the game's screen when it supports Game Color, else (None, reason in words)."""
+        try:
+            _, screen, reason = gamecolor.find_screen(self.color_device(gid, fresh=True))
+        except Exception as exc:
+            log.exception("Game Color check failed")
+            return None, f"Couldn't ask the graphics driver ({exc})."
+        if screen and self.color.applied and self.color.applied["device"].lower() == screen.device.lower():
+            screen.level = self.color.applied["previous"]      # show the normal level, not the boosted one
+        return screen, reason
+
+    def set_color(self, enabled=None, level=None, gid=COLOR_GAME):
+        gs = self.gs(gid)
+        if enabled is not None:
+            gs["game_color"] = bool(enabled)
+        if level is not None:
+            gs["game_color_level"] = level
+        self.color.failed = None              # the player changed something: try again
+        self.save()
+        self._tick_color()
+
+    def preview_color(self, gid=COLOR_GAME, seconds=4.0):
+        """Show the chosen strength on the desktop for a few seconds (never while the game runs)."""
+        if self.running.get(gid):
+            return False
+        self.color.preview(time.monotonic(), seconds)
+        self._tick_color()
+        QTimer.singleShot(int(seconds * 1000) + 100, self._tick_color)
+        return True
+
+    def color_active(self):
+        return bool(self.color.applied)
+
+    def _tick_color(self):
+        gid = self.COLOR_GAME
+        if gid not in self.games:
+            return
+        enabled, percent = self.color_settings(gid)
+        now = time.monotonic()
+        if not self.color.applied and now >= self.color.preview_until and not (enabled and self.running.get(gid)):
+            return                            # nothing on, nothing to turn on: no driver or window calls at all
+        was = bool(self.color.applied)
+        exes = {n.lower() for n in getattr(self.games[gid], "process_names", ())}
+        error = self.color.tick(enabled and self.running.get(gid), percent, self.color_device(gid), exes, now)
+        if error:
+            self.notify("warning", f"Game Color is off for now: {error}")
+        if was != bool(self.color.applied):
+            self.changed.emit()
 
     def _retry_revert(self):
         """A switch back that failed earlier is retried every few seconds - but never in the middle of a match."""
@@ -933,6 +1006,11 @@ class Engine(QObject):
 
     def shutdown(self):
         self.timer.stop()
+        try:
+            self.color.preview_until = 0.0
+            self.color.off()                      # never leave the colour boost on after quitting
+        except Exception:
+            log.exception("Game Color off at exit failed")
         gid = self.state.data.get("game")
         if not self.state.stretched or gid not in self.games:
             return

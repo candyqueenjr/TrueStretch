@@ -1,4 +1,5 @@
-"""2x-resolution screenshots + focused crops for the website and README."""
+"""2x-resolution screenshots + focused crops for the website and README.
+SITE_ONLY=color,servers writes only those files (the others are still rendered, not saved)."""
 import os, sys, tempfile, time
 from pathlib import Path
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="ts-site-")
@@ -69,6 +70,9 @@ def save(widget, name):
         y0 = max(top_left.y() - 12, stack_top)
         bottom = min(top_left.y() + widget.height() + 12, stack_top + win.stack.height())
         img = win.grab(QRect(top_left.x() - 12, y0, widget.width() + 24, bottom - y0))
+    only = [n for n in os.environ.get("SITE_ONLY", "").split(",") if n]
+    if only and name.rsplit(".", 1)[0] not in only:
+        return
     img.save(str(OUT / name))
     print("saved", name, img.width(), "x", img.height())
 
@@ -127,6 +131,15 @@ game.servers.set_demo(pings, {"region": "eu", "name": "Europe", "entries": [], "
 game.refresh(); game.settle()
 pump(0.6)
 save(card_of(game.servers.board), "servers.png")
+# Game Color with an example NVIDIA screen (the website must not depend on the PC that renders it).
+from truestretch.gamecolor import Screen                       # noqa: E402
+gs.update(game_color=True, game_color_level="medium")
+e.color_screen = lambda gid="valorant": (Screen("nvidia", "demo", "demo", 50, 50, 0, 100), None)
+game.show_tab("color")
+game.color.screen = None
+game.refresh(); game.settle()
+pump(0.6)
+save(card_of(game.color.preview), "color.png")
 win.navigate("mypc")
 pump(0.8)
 save(win, "mypc.png")

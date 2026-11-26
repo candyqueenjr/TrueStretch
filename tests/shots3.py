@@ -32,7 +32,7 @@ OUT = Path(os.environ.get("SHOT_OUT", str(Path(__file__).resolve().parent / "out
 OUT.mkdir(parents=True, exist_ok=True)
 SIZES = [tuple(int(v) for v in s.split("x")) for s in os.environ.get("SHOT_SIZES", "1440x900,1100x760,900x620").split(",")]
 THEMES = os.environ.get("SHOT_THEMES", "dark").split(",")
-ALL_PAGES = ("game:valorant,game:valorant:servers,game:valorant:accounts,game:valorant:display,game:valorant:launch,"
+ALL_PAGES = ("game:valorant,game:valorant:servers,game:valorant:color,game:valorant:accounts,game:valorant:display,game:valorant:launch,"
              "optimize,matches,"
              "matches:empty,mypc,settings,settings:backups,settings:about,welcome:0,welcome:2,welcome:3,welcome:4,"
              "update,troubleshoot,confirm,report")
@@ -165,6 +165,8 @@ def shoot_page(page, w, h, prefix):
         win.pages[key].show_tab(tab)
         if tab == "servers":
             win.pages[key].servers.set_demo(demo_pings(), demo_status(), now=datetime(2026, 11, 22, 20, 0))
+        if tab == "color":                      # shown switched on (settings only - the screen isn't touched)
+            win.engine.gs("valorant").update(game_color=True, game_color_level="medium")
         win.pages[key].refresh()
     elif key == "settings" and tab:
         win.pages["settings"].show_tab(tab)

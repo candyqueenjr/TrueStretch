@@ -35,6 +35,7 @@ undone.
 | **Optimize Max** | Windows (power mode, Game Mode, Game Bar recording, windowed-game optimizations, GPU scheduling, refresh rate, Sticky/Filter/Toggle Keys shortcut pop-ups, a switched-off page file, and proof of which graphics chip VALORANT really ran on), NVIDIA driver settings for VALORANT's profile only, VALORANT's graphics files for every account, the in-game settings (read from your account, with the value to pick), and your last match's real FPS and game delay with what limits the FPS (graphics card, processor or FPS cap), whether VALORANT itself or your other programs filled the memory or took the processor, and how it compares with your matches before Optimize Max. Every change verified and undoable. |
 | **Match history** | After every match: average FPS, slow frames, game delay and what held the FPS back, from VALORANT's own statistics. The *Matches* page keeps your history (VALORANT deletes its old logs after a few days) and shows what Optimize Max or a new stretch size did to your FPS. |
 | **Servers** | Your ping to every VALORANT server of your region, measured by the game itself at each start: which server VALORANT prefers for you, your lowest-ping server, how steady your ping is between game starts and the Network Buffering setting that fits — plus Riot's current server status for your region. |
+| **Game Color** | Vivid colours in VALORANT only: NVIDIA digital vibrance or AMD saturation turns up while VALORANT is the window in front and goes back the moment you alt-tab, close the game or quit TrueStretch — even after a crash. Four strengths and a 4-second preview on your desktop. |
 | **Diagnostics** | A full technical report of every value read and every change made — copy it into a bug report in one click. |
 | **Knows your PC** | *My PC* explains every screen, graphics card, driver and Windows setting in plain words, with a fix for anything that isn't right. |
 | **Safe by design** | Backups before every change. The stretched resolution is never saved into Windows, so a crash or power cut can't leave your PC stretched, and a guard process puts your normal resolution back even if TrueStretch is killed. Crash-safe writes for every file it changes. Never touches the game while it runs. |
@@ -67,6 +68,9 @@ undone.
 </tr>
 <tr>
 <td colspan="2"><img src="docs/assets/screens/servers.png" alt="Servers"><br><sub><b>SERVERS</b> — your ping to every VALORANT server, measured by the game itself</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/assets/screens/color.png" alt="Game Color"><br><sub><b>GAME COLOR</b> — vivid colours only while VALORANT is in front</sub></td>
 </tr>
 </table>
 

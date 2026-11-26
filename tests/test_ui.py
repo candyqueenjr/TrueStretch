@@ -309,5 +309,78 @@ check(all(b.width() >= b.sizeHint().width() - 2 for b in seg.buttons.values()) a
       f"the five filter buttons fit at 900 px (segment {seg.width()} px)")
 win.resize(1280, 800); pump(0.1)
 
+# ---- Color tab (2.3.0): Game Color ------------------------------------------------
+# A fake driver: the real one is exercised in test_gamecolor.py; nothing on this PC changes here.
+from truestretch import gamecolor                           # noqa: E402
+from truestretch.gamecolor import GameColor, Screen         # noqa: E402
+
+
+class _FakeColor:
+    def __init__(self):
+        self.level, self.sets = 50, []
+
+    def find(self, device):
+        return self, Screen("nvidia", "FAKE", device or "FAKE", self.level, 50, 0, 100), None
+
+    def make(self, name):
+        return self
+
+    def set_level(self, key, level):
+        self.sets.append(level)
+        self.level = level
+
+
+fake_color, front_exe = _FakeColor(), {"exe": None}
+orig_find = gamecolor.find_screen
+gamecolor.find_screen = fake_color.find
+engine.color = GameColor(find=fake_color.find, make=fake_color.make, front=lambda: front_exe["exe"])
+win.show()                                                  # win.quit() above hid it
+try:
+    for w, h in ((900, 620), (1280, 800)):
+        win.resize(w, h); pump(0.1)
+        win.navigate("game:valorant"); game.show_tab("color"); pump(0.3)
+        ct = game.color
+        check(game.tabs.tabText(game.tabs.currentIndex()) == "Color" and ct.isVisible(),
+              f"the VALORANT page has a Color tab ({w} px)")
+        check(ct.width() <= game.tabs.width() and ct.level.width() >= ct.level.sizeHint().width() - 2,
+              f"the Color tab and its four strength buttons fit at {w} px")
+    check(ct.state.text() == "Off" and not ct.toggle.isChecked(), "Game Color starts off")
+    check("NVIDIA digital vibrance — normal 50 %, in VALORANT 75 %" in ct.screen_line.text(),
+          f"the screen line says what will happen ({ct.screen_line.text()})")
+    check(ct.try_btn.isEnabled(), "Preview is offered while VALORANT is closed")
+    ct.toggle.setChecked(True); pump(0.1)
+    check(engine.gs("valorant")["game_color"] is True, "the toggle is saved")
+    check(ct.state.text().startswith("Ready"), "on but the game isn't in front: Ready")
+    ct.level.buttons["strong"].click(); pump(0.1)
+    check(engine.gs("valorant")["game_color_level"] == "strong" and "85 %" in ct.screen_line.text(),
+          "Strong = 85 % and saved")
+    check(ct.preview.percent == 70 and ct.preview.active, "the before/after strip follows the strength")
+    engine.running["valorant"] = True
+    front_exe["exe"] = "valorant-win64-shipping.exe"
+    engine._tick_color(); pump(0.1)
+    check(fake_color.level == 85 and engine.color_active(), "VALORANT in front: the boost is on")
+    game.refresh(); pump(0.05)
+    check(ct.state.text() == "On now" and not ct.try_btn.isEnabled(), "the tab says On now; no preview in game")
+    check("normal 50 %" in ct.screen_line.text(), "while on, the tab still shows the normal level (not 85)")
+    front_exe["exe"] = "explorer.exe"
+    engine._tick_color()
+    check(fake_color.level == 50 and not engine.color_active(), "alt-tab: back to normal")
+    front_exe["exe"] = "valorant-win64-shipping.exe"
+    engine._tick_color()
+    engine.running["valorant"] = False
+    engine._tick_color()
+    check(fake_color.level == 50, "the game closing turns it off")
+    engine._tick_color()
+    check(fake_color.sets == [85, 50, 85, 50], f"no extra driver calls ({fake_color.sets})")
+    ct.toggle.setChecked(False); pump(0.05)
+finally:
+    gamecolor.find_screen = orig_find
+
+# Opening a tab refreshes it (Display used to keep what it had at the last engine change).
+game.show_tab("resolution"); pump(0.05)
+game.desktop_now.setText("")
+game.show_tab("display"); pump(0.1)
+check(game.desktop_now.text() != "", f"opening the Display tab fills it ({game.desktop_now.text()})")
+
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

@@ -13,6 +13,7 @@ from . import icons
 from .base_page import Page, fill_combo, quiet
 from .theme import palette
 from .responsive import Reflow, ResponsiveGrid
+from .color_tab import ColorTab
 from .servers_tab import ServersTab
 from .widgets import (Badge, Card, CheckRow, ResolutionTile, Segmented, SettingsGroup, ToggleSwitch, button,
                       divider, game_pixmap, hbox, label, vbox)
@@ -100,11 +101,20 @@ class GamePage(Page):
         self.content.addWidget(self.tabs)
         self._build_resolution_tab()
         self._build_servers_tab()
+        self._build_color_tab()
         self._build_accounts_tab()
         self._build_display_tab()
         self._build_launch_tab()
         self.finish()
         self.refresh()
+        self.tabs.currentChanged.connect(self._tab_switched)
+
+    def _tab_switched(self, _index):
+        """Each tab fills itself only while it's on screen, so opening one must refresh it (Accounts, Display and
+        Launch used to show what they had at the last engine change until something else happened)."""
+        refresh = getattr(self.window, "_refresh_page", None)
+        if refresh and self.isVisible():
+            refresh(self)
 
     @property
     def gs(self):
@@ -173,9 +183,15 @@ class GamePage(Page):
 
     # ---- tab: stretch -----------------------------------------------------
 
+    TAB_KEYS = ["resolution", "servers", "color", "accounts", "display", "launch"]   # in the order they're built
+
     def show_tab(self, name):
-        names = {"resolution": 0, "servers": 1, "accounts": 2, "display": 3, "launch": 4, "guide": 0}
-        self.tabs.setCurrentIndex(names.get(name, 0))
+        keys = self.TAB_KEYS
+        self.tabs.setCurrentIndex(keys.index(name) if name in keys else 0)
+
+    def current_tab(self):
+        i = self.tabs.currentIndex()
+        return self.TAB_KEYS[i] if 0 <= i < len(self.TAB_KEYS) else "resolution"
 
     def troubleshoot(self, intro=None):
         TroubleshootDialog(self, lambda: self.window.test_stretch(self.gid), intro).exec()
@@ -271,6 +287,14 @@ class GamePage(Page):
         layout.addWidget(self.servers)
         layout.addStretch(1)
         self.tabs.addTab(page, "Servers")
+
+    def _build_color_tab(self):
+        """Game Color: vivid colours only while VALORANT is in front (ui/color_tab.py)."""
+        page, layout = tab_page()
+        self.color = ColorTab(self.engine, self.gid, self.window)
+        layout.addWidget(self.color)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "Color")
 
     def _build_accounts_tab(self):
         page, layout = tab_page()
@@ -608,14 +632,16 @@ class GamePage(Page):
             self.mode_seg.set_value(gs["window_mode"])
             self.auto_toggle.setChecked(bool(gs.get("auto_match", True)))
 
-        tab = self.tabs.currentIndex()
-        if tab == 1:
+        tab = self.current_tab()
+        if tab == "servers":
             self.servers.refresh()
-        elif tab == 2:
+        elif tab == "color":
+            self.color.refresh()
+        elif tab == "accounts":
             self._fill_tree(targets)
-        elif tab == 3:
+        elif tab == "display":
             self._refresh_display_tab(d, modes)
-        elif tab == 4:
+        elif tab == "launch":
             self._refresh_launch_tab(info)
 
     def _refresh_display_tab(self, d, modes):

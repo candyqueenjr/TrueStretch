@@ -2,6 +2,25 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — 2026-11-26
+
+Feature day: Game Color (ROADMAP C3).
+
+### Added
+- **Game Color** (`truestretch/gamecolor.py`, `ui/color_tab.py`, new **Color** tab on the VALORANT page): NVIDIA digital vibrance (`NvAPI_GetDVCInfoEx` / `NvAPI_SetDVCLevelEx`, screens matched by `NvAPI_GetAssociatedNvidiaDisplayName`) or AMD saturation (`ADL_Display_Color_Get/Set`, `ADL_DISPLAY_COLOR_SATURATION`) raised only while VALORANT is the foreground window (`GetForegroundWindow` → `QueryFullProcessImageNameW`, checked in the engine's 500 ms poll; no driver call unless something changed).
+  - Strengths Light / Medium / Strong / Max = 30 / 50 / 70 / 100 % of the way from the driver's normal level to its maximum (NVIDIA 50 → 65 / 75 / 85 / 100 %).
+  - The level before is written to `%APPDATA%\TrueStretch\color.json` (atomic) before anything changes; restored on alt-tab, game exit, switching off, app exit, by the guard process when TrueStretch ends (`restore_saved(only_owner=pid)`), and at the next start after a crash or power cut. A restore the driver refused keeps the file, and turning on again keeps the true original instead of the boosted level.
+  - A driver error or unsupported screen (e.g. a laptop panel on the Intel GPU) is reported once and not retried every half second; changing a setting or pressing Preview tries again.
+  - Preview (4 s on the desktop, not while VALORANT runs) and a painted before/after colour strip.
+- `tests/test_gamecolor.py` (fake driver: foreground logic, strengths, exact restore, crash recovery, guard ownership, failed-restore safety, error handling; plus a real NVIDIA round trip when an NVIDIA screen exists) in `run_all.py` and the CI list. `tests/test_ui.py`: Color tab layout at 900/1280 px, settings saved, engine on/off with the game in front, tab refresh on switch.
+- `tests/shots_site.py`: `color.png` (example NVIDIA screen) and `SITE_ONLY=` to write only named images.
+
+### Fixed
+- The VALORANT page's tabs refresh when opened (`GamePage._tab_switched`); Accounts, Display and Launch showed what they had at the last engine change. Tabs are addressed by name (`TAB_KEYS`) instead of index numbers.
+
+### Changed
+- Website: feature cards "Safe by design" and "Updates itself" merged, new Game Color card; FAQ "Is Game Color allowed?" and an accurate "Does it collect data?" (it also reads Riot's public status feed since 2.1.0). README: Game Color row and screenshot.
+
 ## [2.2.0] — 2026-11-25
 
 Code-health day: slow Windows calls off the UI thread, power-plan values through the Windows API, one display query per refresh.

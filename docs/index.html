@@ -166,11 +166,11 @@
       <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">02<span class="sq"></span></div><h3>Fully automatic setup</h3><p>Adds the custom resolution to your graphics driver, sets full-screen scaling and the right game settings. No panels, no guides.</p></article>
       <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">03<span class="sq"></span></div><h3>Four stretch levels</h3><p>Light, Classic 4:3, Strong, Extreme — or custom. Tune it live in a match with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>.</p></article>
       <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">04<span class="sq"></span></div><h3>Optimize Max</h3><p>Scans every FPS and input-delay setting on your PC and lists each change on its own — current value, target, and why.</p></article>
-      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">05<span class="sq"></span></div><h3>Safe by design</h3><p>Backs up every file first and every change can be undone. A guard restores your resolution even if the app crashes.</p></article>
-      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">06<span class="sq"></span></div><h3>Updates itself</h3><p>New versions install in seconds with one click, checked with SHA-256 first. Your settings stay as they are.</p></article>
-      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">07<span class="sq"></span></div><h3>Knows your PC</h3><p><b>My PC</b> explains every screen, graphics card, driver and Windows setting in plain words, with a fix for anything that isn't right.</p></article>
-      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">08<span class="sq"></span></div><h3>Match history</h3><p>After every match: average FPS, slow frames, game delay and what held the FPS back, from VALORANT's own statistics. Kept for you, with before/after Optimize Max.</p></article>
-      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">09<span class="sq"></span></div><h3>Servers</h3><p>Your ping to every VALORANT server, measured by the game itself: which one VALORANT prefers, your lowest, how steady it is — and Riot's live status for your region.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">05<span class="sq"></span></div><h3>Safe, and updates itself</h3><p>Backs up every file first and every change can be undone; a guard restores your screen even if the app crashes. New versions install in one click, checked with SHA-256.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">06<span class="sq"></span></div><h3>Knows your PC</h3><p><b>My PC</b> explains every screen, graphics card, driver and Windows setting in plain words, with a fix for anything that isn't right.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">07<span class="sq"></span></div><h3>Match history</h3><p>After every match: average FPS, slow frames, game delay and what held the FPS back, from VALORANT's own statistics. Kept for you, with before/after Optimize Max.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">08<span class="sq"></span></div><h3>Servers</h3><p>Your ping to every VALORANT server, measured by the game itself: which one VALORANT prefers, your lowest, how steady it is — and Riot's live status for your region.</p></article>
+      <article class="card" data-r="cell"><i class="mk"></i><div class="card-top">09<span class="sq"></span></div><h3>Game Color</h3><p>Vivid colours only while VALORANT is in front: NVIDIA digital vibrance or AMD saturation, back to normal the moment you alt-tab or close the game.</p></article>
     </div>
   </div>
 </section>
@@ -369,7 +369,13 @@
         <div class="qa" data-r="cell">
           <h3><button class="q" type="button" id="q6" aria-controls="a6"><span class="q-n">07</span><span>Does it collect data?</span><span class="q-i" aria-hidden="true"></span></button></h3>
           <div class="a" id="a6" role="region" aria-labelledby="q6"><div class="a-in">
-            <p>No. The only network request is an anonymous check for updates on GitHub, which you can turn off in Settings.</p>
+            <p>No. TrueStretch only asks GitHub anonymously whether there's an update (you can turn that off in Settings) and, on the Servers tab, reads Riot's public server-status page. Nothing about you or your PC is sent anywhere.</p>
+          </div></div>
+        </div>
+        <div class="qa" data-r="cell">
+          <h3><button class="q" type="button" id="q8" aria-controls="a8"><span class="q-n">08</span><span>Is Game Color allowed?</span><span class="q-i" aria-hidden="true"></span></button></h3>
+          <div class="a" id="a8" role="region" aria-labelledby="q8"><div class="a-in">
+            <p>It's the same screen setting as <b>Digital vibrance</b> in NVIDIA Control Panel or <b>Saturation</b> in AMD Software, set through the graphics driver. It never reads or changes the game, its files or Vanguard. It works on screens connected to NVIDIA or AMD graphics; on many laptops the built-in screen runs on the Intel chip, and the Color tab says so.</p>
           </div></div>
         </div>
       </div>

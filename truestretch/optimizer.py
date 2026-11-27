@@ -50,6 +50,10 @@ class Item:
     _restore: object = None           # callable(data) - puts the original back
     _admin_cmds: list = field(default_factory=list)            # for admin items: cmd lines to run elevated
     _admin_undo: object = None        # callable(data) -> cmd lines
+    # How to put the original back WITHOUT this scan's item (stored in the undo file when the change is made):
+    # {"kind": "reg", "keys": [[root, key, [names]]], "after": "mouse"} | {"kind": "power", "sub", "setting"} |
+    # {"kind": "overlay"}. Undo uses it when the item is gone (game uninstalled, plan switched, ...).
+    fallback: dict = field(default_factory=dict)
 
     @property
     def can_apply(self):
@@ -92,6 +96,79 @@ def _reg_restore(root, key, data):
                 winreg.SetValueEx(k, n, 0, saved[1], saved[0])
 
 
+def reg_spec(root, key, *names, after=None):
+    spec = {"kind": "reg", "keys": [[ROOT_NAMES[root], key, list(names)]]}
+    if after:
+        spec["after"] = after
+    return spec
+
+
+def _reg_backup(root, key, names):
+    """Like _reg_snapshot, but JSON-safe for every value type (REG_BINARY is kept as hex)."""
+    out = {}
+    for n, saved in _reg_snapshot(root, key, *names).items():
+        if saved is not None and isinstance(saved[0], (bytes, bytearray)):
+            saved = [{"hex": bytes(saved[0]).hex()}, saved[1]]
+        out[n] = saved
+    return out
+
+
+def _reg_put_back(root, key, data):
+    clean = {}
+    for n, saved in data.items():
+        if saved is not None and isinstance(saved[0], dict) and "hex" in saved[0]:
+            saved = [bytes.fromhex(saved[0]["hex"]), saved[1]]
+        clean[n] = saved
+    _reg_restore(root, key, clean)
+
+
+ROOTS = {"HKCU": HKCU, "HKLM": HKLM}
+
+
+def fallback_backup(item, snapshot):
+    """What the undo file keeps so the change can be put back even if a later scan no longer lists the item."""
+    spec = item.fallback or {}
+    kind = spec.get("kind")
+    try:
+        if kind == "reg":
+            out = {"kind": "reg", "backup": [[r, k, _reg_backup(ROOTS[r], k, names)] for r, k, names in spec["keys"]]}
+            if spec.get("after"):
+                out["after"] = spec["after"]
+            return out
+        if kind == "power":
+            return {"kind": "power", "sub": spec["sub"], "setting": spec["setting"], "value": snapshot}
+        if kind == "overlay":
+            return {"kind": "overlay", "value": snapshot}
+    except Exception:                       # the item's own snapshot is still there; never block the change
+        log.exception("fallback backup for %s failed", item.id)
+    return None
+
+
+def run_fallback(fb):
+    """Puts a change back from the undo file alone. Raises when it can't."""
+    kind = fb.get("kind")
+    if kind == "reg":
+        for r, k, data in fb["backup"]:
+            _reg_put_back(ROOTS[r], k, data)
+        if fb.get("after") == "mouse":
+            _mouse_apply_registry()
+    elif kind == "power":
+        from . import powerplan
+        powerplan.write_ac(fb["sub"], fb["setting"], int(fb["value"]))
+    elif kind == "overlay":
+        _overlay_set(fb["value"])
+    else:
+        raise ValueError(f"unknown undo kind {kind!r}")
+
+
+def boot_time():
+    """When Windows last started (local datetime)."""
+    from datetime import timedelta
+    ticks = ctypes.windll.kernel32.GetTickCount64
+    ticks.restype = ctypes.c_uint64
+    return datetime.now() - timedelta(milliseconds=ticks())
+
+
 def _dbg(root, key, name, value):
     return f"{ROOT_NAMES[root]}\\{key} → {name} = {value!r}"
 
@@ -105,7 +182,7 @@ def _game_mode():
     return Item("game_mode", "Windows", "Game Mode", "Windows gives the game priority over background work (updates, "
                 "indexing) and avoids starting driver installs while you play.",
                 "On" if on else "Off", "On", DONE if on else IMPROVE, "Steadier FPS", 2,
-                debug=[_dbg(HKCU, key, name, raw)],
+                debug=[_dbg(HKCU, key, name, raw)], fallback=reg_spec(HKCU, key, name),
                 _apply=lambda: _reg_dword(HKCU, key, name, 1),
                 _snapshot=lambda: _reg_snapshot(HKCU, key, name),
                 _restore=lambda d: _reg_restore(HKCU, key, d))
@@ -126,6 +203,7 @@ def _game_dvr():
                 "a little delay. Screenshots with Win+Alt+PrtScn keep working.",
                 "On" if on else "Off", "Off", IMPROVE if on else DONE, "More FPS", 2,
                 debug=[_dbg(HKCU, k1, n1, v1), _dbg(HKCU, k2, n2, v2)], _apply=apply,
+                fallback={"kind": "reg", "keys": [["HKCU", k1, [n1]], ["HKCU", k2, [n2]]]},
                 _snapshot=lambda: {"a": _reg_snapshot(HKCU, k1, n1), "b": _reg_snapshot(HKCU, k2, n2)},
                 _restore=lambda d: (_reg_restore(HKCU, k1, d["a"]), _reg_restore(HKCU, k2, d["b"])))
 
@@ -184,6 +262,7 @@ def _power(pc):
                 note="Applies to the current power source (plugged in or battery).",
                 debug=[f"plan: {plan}", f"power mode overlay: {name}"],
                 _apply=lambda: _overlay_set(BEST_PERFORMANCE), _snapshot=lambda: current,
+                fallback={"kind": "overlay"},
                 _restore=lambda d: _overlay_set(d))
 
 
@@ -220,6 +299,7 @@ def _windowed_opt():
                 "TrueStretch runs VALORANT in Windowed fullscreen. This Windows 11 setting gives windowed games the same "
                 "low delay as exclusive fullscreen.", "On" if on else "Off", "On", DONE if on else IMPROVE,
                 "Lower input delay", 3, debug=[_dbg(HKCU, key, name, raw)], _apply=apply,
+                fallback=reg_spec(HKCU, key, name),
                 _snapshot=lambda: _reg_snapshot(HKCU, key, name), _restore=lambda d: _reg_restore(HKCU, key, d))
 
 
@@ -245,7 +325,7 @@ def _gpu_pref(engine, pc):
                 "Your PC has two graphics chips. This makes Windows always run VALORANT on the powerful one.",
                 current, "High performance", DONE if on else IMPROVE,
                 "More FPS", 3, debug=[_dbg(HKCU, key, exe, raw)],
-                _apply=apply,
+                _apply=apply, fallback=reg_spec(HKCU, key, exe),
                 _snapshot=lambda: _reg_snapshot(HKCU, key, exe), _restore=lambda d: _reg_restore(HKCU, key, d))
 
 
@@ -437,6 +517,19 @@ def _refresh(engine):
                 _restore=lambda data: display.set_mode(display.Mode.from_list(data), d.device))
 
 
+def _mouse_apply_registry():
+    """Tells Windows to use the acceleration values now in the registry (no sign-out needed)."""
+    key = r"Control Panel\Mouse"
+    vals = []
+    for n in ("MouseThreshold1", "MouseThreshold2", "MouseSpeed"):
+        try:
+            vals.append(int(str(_reg(HKCU, key, n, "0") or "0")))
+        except ValueError:
+            vals.append(0)
+    arr = (ctypes.c_int * 3)(*vals)
+    ctypes.windll.user32.SystemParametersInfoW(0x0004, 0, arr, 0x01 | 0x02)    # SPI_SETMOUSE, update + notify
+
+
 def _pointer():
     key = r"Control Panel\Mouse"
     speed, t1, t2 = (_reg(HKCU, key, n) for n in ("MouseSpeed", "MouseThreshold1", "MouseThreshold2"))
@@ -450,9 +543,7 @@ def _pointer():
 
     def restore(data):
         _reg_restore(HKCU, key, data)
-        vals = [int((data.get(n) or ["0"])[0]) for n in ("MouseThreshold1", "MouseThreshold2", "MouseSpeed")]
-        arr = (ctypes.c_int * 3)(*vals)
-        ctypes.windll.user32.SystemParametersInfoW(0x0004, 0, arr, 0x01 | 0x02)
+        _mouse_apply_registry()
 
     return Item("pointer", "Mouse", "Enhance pointer precision (mouse acceleration)",
                 "Makes the cursor move further when you move the mouse faster. VALORANT uses raw input in matches, so "
@@ -460,6 +551,7 @@ def _pointer():
                 "On" if on else "Off", "Off", IMPROVE if on else DONE, "Consistent aim", 1,
                 debug=[_dbg(HKCU, key, "MouseSpeed", speed), _dbg(HKCU, key, "MouseThreshold1", t1),
                        _dbg(HKCU, key, "MouseThreshold2", t2)], _apply=apply,
+                fallback=reg_spec(HKCU, key, "MouseSpeed", "MouseThreshold1", "MouseThreshold2", after="mouse"),
                 _snapshot=lambda: _reg_snapshot(HKCU, key, "MouseSpeed", "MouseThreshold1", "MouseThreshold2"),
                 _restore=restore)
 
@@ -778,6 +870,7 @@ class Optimizer:
             ("Memory speed and channels", more.memory_items),
             ("Drive VALORANT is installed on", lambda: more.storage_item(e)),
             ("Network connection", more.network_item),
+            ("Windows Update uploads (Delivery Optimization)", more.delivery_item),
             ("Graphics drivers, battery, memory integrity", lambda: _info_items(e, pc)),
             ("Your last match (VALORANT's own statistics)", lambda: _match_perf(e, since=self.applied_since())),
             ("Settings inside VALORANT", lambda: _in_game_items(e)),
@@ -838,10 +931,12 @@ class Optimizer:
         for item in [i for i in chosen if not i._admin_cmds]:
             try:
                 if item.id not in undo and item._snapshot:
-                    undo[item.id] = {"time": datetime.now().isoformat(timespec="seconds"), "title": item.title,
-                                     "data": item._snapshot()}
+                    undo[item.id] = self._entry(item, item._snapshot())
                     self._save_undo(undo)
                 item._apply()
+                if item.restart and item.id in undo:
+                    undo[item.id]["restart"] = True
+                    self._save_undo(undo)
                 results.append((item, True, ""))
             except Exception as exc:
                 log.exception("Applying %s failed", item.id)
@@ -849,10 +944,13 @@ class Optimizer:
         if admin:
             for item in admin:
                 if item.id not in undo:
-                    undo[item.id] = {"time": datetime.now().isoformat(timespec="seconds"), "title": item.title,
-                                     "data": item._snapshot() if item._snapshot else None, "admin": True}
+                    undo[item.id] = self._entry(item, item._snapshot() if item._snapshot else None, admin=True)
             try:
                 code = run_elevated([c for i in admin for c in i._admin_cmds], hwnd)
+                if code == 0:
+                    for item in admin:
+                        if item.restart:
+                            undo[item.id]["restart"] = True
                 self._save_undo(undo)
                 for item in admin:
                     results.append((item, code == 0, "" if code == 0 else f"exit code {code}"))
@@ -860,6 +958,46 @@ class Optimizer:
                 for item in admin:
                     results.append((item, False, str(exc)))
         return self._verify(results)
+
+    @staticmethod
+    def _entry(item, data, admin=False):
+        """One undo-file entry: the item's own snapshot plus enough to show and undo it without a scan."""
+        entry = {"time": datetime.now().isoformat(timespec="seconds"), "title": item.title, "data": data,
+                 "group": item.group, "from": item.current, "to": item.target, "impact": item.impact}
+        if admin:
+            entry["admin"] = True
+            if item._admin_undo:
+                try:
+                    entry["undo_cmds"] = list(item._admin_undo(data))
+                except Exception:
+                    log.exception("undo commands for %s", item.id)
+        fb = fallback_backup(item, data)
+        if fb:
+            entry["fallback"] = fb
+        return entry
+
+    def changes(self):
+        """Every change TrueStretch made that is still in place, newest first:
+        [{id, title, group, time (datetime or None), from, to, impact, restart_pending}]."""
+        try:
+            booted = boot_time()
+        except (OSError, AttributeError, ValueError, OverflowError):
+            booted = None
+        out = []
+        for iid, entry in self._undo_data().items():
+            try:
+                when = datetime.fromisoformat(entry.get("time", ""))
+            except (TypeError, ValueError):
+                when = None
+            out.append({"id": iid, "title": entry.get("title", iid), "group": entry.get("group", ""), "time": when,
+                        "from": entry.get("from", ""), "to": entry.get("to", ""), "impact": entry.get("impact", ""),
+                        "restart_pending": bool(entry.get("restart") and when and booted and when > booted)})
+        out.sort(key=lambda c: c["time"] or datetime.min, reverse=True)
+        return out
+
+    def restart_pending(self):
+        """Titles of changes that only take effect after Windows restarts, when Windows hasn't restarted since."""
+        return [c["title"] for c in self.changes() if c["restart_pending"]]
 
     def _verify(self, results):
         by_id = {i.id: i for i in self.scan()}
@@ -892,6 +1030,9 @@ class Optimizer:
                     if item and item._admin_undo:
                         admin_cmds.extend(item._admin_undo(entry.get("data")))
                         done.append(iid)
+                    elif entry.get("undo_cmds"):            # the scan no longer lists it: commands kept at apply
+                        admin_cmds.extend(entry["undo_cmds"])
+                        done.append(iid)
                     else:
                         failed.append(title)
                     continue
@@ -899,6 +1040,10 @@ class Optimizer:
                     item._restore(entry.get("data"))
                     done.append(iid)
                     self._record(f"↩ {title} put back")
+                elif entry.get("fallback"):                 # e.g. VALORANT uninstalled, power plan switched
+                    run_fallback(entry["fallback"])
+                    done.append(iid)
+                    self._record(f"↩ {title} put back (from the saved original)")
                 else:
                     failed.append(title)     # not on this PC right now (program uninstalled, game not found ...)
             except Exception as exc:

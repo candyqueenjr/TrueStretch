@@ -5,8 +5,9 @@
     SHOT_PAGES   see ALL_PAGES                       pages, tabs and dialogs to capture
     SHOT_OUT     tests/out                           where the PNGs go
 
-Pages: game:valorant (+ :accounts / :display / :launch), optimize, matches (example data), matches:empty, mypc,
-settings (+ :backups / :about). Dialogs: welcome:0 … welcome:4, update, troubleshoot, confirm, report.
+Pages: game:valorant (+ :accounts / :display / :launch), optimize, optimize:result (example result card and
+example changes), matches (example data), matches:empty, mypc, settings (+ :backups / :about).
+Dialogs: welcome:0 … welcome:4, update, troubleshoot, confirm, report, changes (example Your changes list).
 Never run while VALORANT is running (it constructs an Engine)."""
 import os, sys, tempfile, time
 from datetime import datetime, timedelta
@@ -33,7 +34,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 SIZES = [tuple(int(v) for v in s.split("x")) for s in os.environ.get("SHOT_SIZES", "1440x900,1100x760,900x620").split(",")]
 THEMES = os.environ.get("SHOT_THEMES", "dark").split(",")
 ALL_PAGES = ("game:valorant,game:valorant:servers,game:valorant:color,game:valorant:accounts,game:valorant:display,game:valorant:launch,"
-             "optimize,matches,"
+             "optimize,optimize:result,matches,"
              "matches:empty,mypc,settings,settings:backups,settings:about,welcome:0,welcome:2,welcome:3,welcome:4,"
              "update,troubleshoot,confirm,report")
 PAGES = os.environ.get("SHOT_PAGES", ALL_PAGES).split(",")
@@ -104,8 +105,34 @@ FAKE_RELEASE = updater.Release(
           "**What's fixed**\n- A fix.\n\nAlready using TrueStretch? It updates itself.")
 
 
+def demo_optimize(page):
+    """Example result card and Your changes entries (written to the temporary APPDATA, nothing on the PC changes)."""
+    from truestretch import optimizer as opt
+    from truestretch.ui.optimize_page import summarize
+    now = datetime.now().replace(microsecond=0)
+    rows = [("game_dvr", "Xbox Game Bar background recording", "Windows", "On", "Off", "More FPS", False),
+            ("cpu_min", "Processor minimum state (plugged in)", "Windows power", "5%", "100%", "Steadier FPS", False),
+            ("usb_suspend", "USB selective suspend (plugged in)", "Windows power", "Enabled", "Disabled",
+             "Consistent input", False),
+            ("flip_model", "Optimizations for windowed games", "Windows", "Off", "On", "Lower input delay", False),
+            ("hags", "Hardware-accelerated GPU scheduling", "Windows", "Off", "On", "Lower input delay", True)]
+    items = [opt.Item(i, g, t, "", a, b, opt.DONE, imp, 2, restart=r) for i, t, g, a, b, imp, r in rows]
+    page.last_run = summarize([(it, True, "") for it in items])
+    page.opt._save_undo({it.id: {"time": (now - timedelta(minutes=n)).isoformat(), "title": it.title,
+                                 "group": it.group, "from": it.current, "to": it.target, "impact": it.impact,
+                                 "restart": it.restart} for n, it in enumerate(items)})
+
+
 def make_dialog(key):
     kind, _, arg = key.partition(":")
+    if kind == "changes":
+        page = win.pages["optimize"]
+        if not page._scanned:
+            win.navigate("optimize")
+            wait_for(lambda: page._scanned and not page.busy)
+        demo_optimize(page)
+        from truestretch.ui.optimize_page import ChangesDialog
+        return ChangesDialog(page)
     if kind == "welcome":
         from truestretch.ui.welcome import WelcomeDialog
         d = WelcomeDialog(e, win)
@@ -156,6 +183,12 @@ def shoot_page(page, w, h, prefix):
     if key == "optimize":
         opt_page = win.pages["optimize"]
         wait_for(lambda: opt_page._scanned and not opt_page.busy)
+        if tab == "result":
+            demo_optimize(opt_page)
+        else:
+            opt_page.last_run = None
+            opt_page.opt._save_undo({})
+        opt_page.render()
     elif key == "matches":
         mp = win.pages["matches"]
         wait_for(lambda: mp._loaded and not mp.busy, 200)
@@ -194,7 +227,7 @@ def shoot_dialog(page, prefix):
     pump(0.1)
 
 
-DIALOGS = ("welcome", "update", "troubleshoot", "confirm", "report")
+DIALOGS = ("welcome", "update", "troubleshoot", "confirm", "report", "changes")
 for theme_name in THEMES:
     prefix = f"{theme_name}-" if len(THEMES) > 1 else ""
     if theme.palette() is not theme.resolve(theme_name):

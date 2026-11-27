@@ -1,13 +1,16 @@
 """Optimize Max page: a score, a live scan, and every optimization on its own row (what it is now, what it should
-be, why) with Apply / Undo per item, Apply selected, Undo all, filters, and a Diagnostics tab with the full
-technical report. Scanning and applying run in the background, so the window never freezes."""
+be, why) with Undo per item, Optimize (selected), filters and the technical report. After Optimize a result card
+explains what changed and what it improves; "Your changes" lists everything TrueStretch changed (with Undo per
+change and a two-step Undo all); changes that need a restart are reminded until Windows has restarted.
+Scanning, applying and undoing run in the background, so the window never freezes."""
 
 import threading
 from datetime import datetime
 
-from PySide6.QtCore import QObject, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QCheckBox, QDialog, QFrame, QLabel, QPlainTextEdit, QProgressBar, QWidget
+from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QLabel, QPlainTextEdit, QProgressBar, QScrollArea,
+                               QWidget)
 
 from .. import optimizer as opt
 from ..paths import log
@@ -149,9 +152,10 @@ class OptimizePage(Page):
             self.stat_labels[key] = v
             stats.addLayout(vbox(v, label(caption, "Caption"), spacing=0))
         self.btn_scan = button("Scan again", "refresh", "Ghost", self.scan)
-        self.btn_undo_all = button("Undo all", "undo", "Ghost", lambda: self.undo(None))
+        self.btn_changes = button("Your changes", "undo", "Ghost", self.show_changes,
+                                  "Everything TrueStretch changed on this PC — undo one change or all of them")
         self.btn_apply = button("Optimize", None, "Primary", self.apply_selected)
-        buttons = hbox(None, self.btn_scan, self.btn_undo_all, self.btn_apply, spacing=8)
+        buttons = hbox(None, self.btn_scan, self.btn_changes, self.btn_apply, spacing=8)
         # Wide: score · counts · … · buttons. Narrow (< 1000 px): score and counts stay side by side, only the
         # buttons move under them - the card used to stack all four and grow past 300 px tall.
         numbers = hbox(score_box, 26, stats, None, spacing=0)
@@ -163,8 +167,13 @@ class OptimizePage(Page):
         self.progress_text = label("", "Caption")
         self.scan_info = label("", "Faint")
         self.scan_info.setWordWrap(True)
-        summary.add(top, self.progress, self.progress_text, self.scan_info)
+        self.restart_note = label("", "H3", wrap=True)
+        self.restart_note.hide()
+        summary.add(top, self.progress, self.progress_text, self.scan_info, self.restart_note)
         self.content.addWidget(summary)
+        self.last_run = None               # what the last Optimize did, for the result card (until dismissed)
+        self.result_card = None
+        self.changes_dialog = None
 
         self.filter_seg = Segmented(FILTERS, "todo")
         self.filter_seg.changed.connect(self._set_filter)
@@ -250,11 +259,11 @@ class OptimizePage(Page):
         if busy:
             self.progress.setRange(0, 0)
             self.progress_text.setText(text.upper())
-        for b in (self.btn_scan, self.btn_undo_all, self.btn_apply):
+        for b in (self.btn_scan, self.btn_changes, self.btn_apply):
             b.setEnabled(not busy)
         if not busy:
             self.update_count()
-            self.btn_undo_all.setEnabled(bool(self.opt.changed_ids()))
+            self._update_changes_button()
 
     # ---- rendering ------------------------------------------------------------
     def _set_filter(self, key):
@@ -287,6 +296,10 @@ class OptimizePage(Page):
         self.score_bar.setToolTip("100 = every setting TrueStretch can check is at its best value for VALORANT. "
                                   "Big wins (input delay, FPS) count more than small ones.")
         self._render_scan_info()
+        self.result_card = None
+        if self.last_run:
+            self.result_card = ResultCard(self, self.last_run)
+            self.list.addWidget(self.result_card)
         order = {opt.IMPROVE: 0, opt.OPTIONAL: 1, opt.INFO: 2, opt.IN_GAME: 3, opt.DONE: 4, opt.UNAVAILABLE: 5}
         shown_any = False
         for group in opt.GROUPS:
@@ -326,7 +339,28 @@ class OptimizePage(Page):
                 empty.add(label("Nothing here right now.", "Muted"))
             self.list.addWidget(empty)
         self.update_count()
-        self.btn_undo_all.setEnabled(bool(changed) and not self.busy)
+        self._update_changes_button()
+
+    def _update_changes_button(self):
+        n = len(self.opt.changed_ids())
+        self.btn_changes.setText(f"Your changes ({n})" if n else "Your changes")
+        self.btn_changes.setEnabled(bool(n) and not self.busy)
+        self.btn_changes.updateGeometry()
+
+    def show_changes(self):
+        if not self.opt.changed_ids():
+            return
+        self.changes_dialog = ChangesDialog(self)
+        self.changes_dialog.exec()
+        self.changes_dialog = None
+
+    def _show_result(self):
+        if self.result_card is not None:
+            self.ensureWidgetVisible(self.result_card, 0, 40)
+
+    def dismiss_result(self):
+        self.last_run = None
+        self.render()
 
     def _render_scan_info(self):
         items, changed = self.opt.items, self.opt.changed_ids()
@@ -337,6 +371,12 @@ class OptimizePage(Page):
         self.scan_info.setText(f"Last scan {when}  ·  {len(items)} checks  ·  {undo}"
                                + ("  ·  VALORANT is running: game-file changes wait until it's closed"
                                   if running else ""))
+        pending = self.opt.restart_pending()
+        self.restart_note.setVisible(bool(pending))
+        if pending:
+            self.restart_note.setText("Restart your PC to finish: " + ", ".join(pending[:4])
+                                      + (f" and {len(pending) - 4} more" if len(pending) > 4 else ""))
+            self.restart_note.setStyleSheet(f"color:{palette()['warning']};")
 
     def _applicable_selected(self):
         return [i.id for i in self.opt.items if i.can_apply and i.id in self.selected]
@@ -377,6 +417,9 @@ class OptimizePage(Page):
         good = sum(1 for _, ok, _ in results if ok)
         bad = len(results) - good
         restart = any(ok and item.restart for item, ok, _ in results)
+        self.last_run = summarize(results) if results else None
+        if self.last_run:                  # on a small window the card is below the fold: bring it into view
+            QTimer.singleShot(0, self._show_result)
         if results:
             self.engine.notify("success" if not bad else "warning",
                                f"{good} change(s) applied and verified" + (f", {bad} didn't work" if bad else "")
@@ -402,6 +445,7 @@ class OptimizePage(Page):
     def _on_undone(self, done):
         self._set_busy(False)
         self.results = {}
+        self.last_run = None
         failed = list(self.opt.last_undo_failed)
         if done is None:
             self.engine.notify("error", "Undo didn't work — nothing was changed. Details are in the Technical report.")
@@ -426,6 +470,147 @@ class OptimizePage(Page):
     def refresh(self):
         if self._scanned and not self.busy:
             self._render_scan_info()          # keeps "VALORANT is running" current without a full re-render
+
+
+def summarize(results):
+    """What the result card shows: [(item, ok, msg)] -> {done: [item], failed: [(item, msg)], restart: [title],
+    impacts: [(impact, count)] most common first, time}."""
+    done = [item for item, ok, _ in results if ok]
+    failed = [(item, msg) for item, ok, msg in results if not ok]
+    impacts = {}
+    for item in done:
+        if item.impact:
+            impacts[item.impact] = impacts.get(item.impact, 0) + 1
+    return {"done": done, "failed": failed, "restart": [i.title for i in done if i.restart],
+            "impacts": sorted(impacts.items(), key=lambda kv: (-kv[1], kv[0])), "time": datetime.now()}
+
+
+class ResultCard(QFrame):
+    """Shown at the top of the list after Optimize: the rows that were fixed leave the To do view, so without this
+    the only feedback was a toast that disappears after a few seconds."""
+
+    def __init__(self, page, run):
+        super().__init__()
+        self.setObjectName("Card")
+        p = palette()
+        done, failed = run["done"], run["failed"]
+        total = len(done) + len(failed)
+        ok_all = not failed
+        if done and ok_all:
+            title = f"{len(done)} change{'s' if len(done) != 1 else ''} done and checked"
+        elif done:
+            title = f"{len(done)} of {total} changes worked"
+        else:
+            title = "Nothing could be changed"
+        head = hbox(_icon("check-circle" if done else "alert", p["success"] if ok_all else p["warning"], 22),
+                    label(title, "H2"), None,
+                    button("Dismiss", None, "Subtle", page.dismiss_result), spacing=12)
+        body = vbox(head, spacing=8, margins=(20, 16, 20, 16))
+        if done:
+            body.addWidget(label("TrueStretch read every setting back after changing it — these are in place now:",
+                                 "Muted", wrap=True))
+            if run["impacts"]:
+                tags = hbox(spacing=8)
+                for impact, count in run["impacts"][:4]:          # 4 fit in one line at 900 px
+                    tags.addWidget(Badge(f"{impact.upper()} · {count}", "success"))
+                tags.addStretch(1)
+                body.addLayout(tags)
+            names = ", ".join(i.title for i in done[:6]) + (f" and {len(done) - 6} more" if len(done) > 6 else "")
+            body.addWidget(label(names, "Faint", wrap=True))
+        for item, msg in failed[:5]:
+            r = label(f"✖  {item.title} — {msg or 'Windows did not accept the change'}", "Muted", wrap=True)
+            r.setStyleSheet(f"color:{p['danger']};")
+            body.addWidget(r)
+        if run["restart"]:                 # the score card keeps the reminder until Windows has restarted
+            body.addWidget(label("Some changes finish after a restart — see the reminder above.", "Muted",
+                                 wrap=True))
+        if done:
+            body.addWidget(label("Play a match to see the difference: the \"Your last match\" row on this page "
+                                 "compares your FPS before and after Optimize Max. Changed your mind? Press Your "
+                                 "changes and undo any of them.", "Faint", wrap=True))
+        self.setLayout(body)
+
+
+class ChangesDialog(QDialog):
+    """Every change TrueStretch made that is still in place: what, when, from → to, Undo per change, and Undo all
+    behind a second click (it used to be one click on the main card, with no way back)."""
+
+    def __init__(self, page):
+        super().__init__(page)
+        self.page = page
+        self.setWindowTitle("TrueStretch — Your changes")
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.resize(720, 560)
+        self.changes = page.opt.changes()
+        n = len(self.changes)
+        rows = vbox(spacing=0)
+        self.undo_buttons = {}
+        for c in self.changes:
+            rows.addWidget(divider())
+            rows.addWidget(self._row(c))
+        rows.addStretch(1)
+        holder = QWidget()
+        holder.setObjectName("Transparent")
+        holder.setLayout(rows)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(holder)
+        self.btn_all = button(f"Undo all {n}", "undo", "Ghost", self._undo_all_clicked)
+        self.confirm_text = label("", "Faint", wrap=True)
+        self.setLayout(vbox(
+            label(f"{n} change{'s' if n != 1 else ''} by TrueStretch", "H2"),
+            label("Everything Optimize Max changed on this PC, newest first. Undo puts the exact value from before "
+                  "back — even if a later scan no longer shows the setting.", "Muted", wrap=True),
+            scroll, self.confirm_text,
+            hbox(self.btn_all, None, button("Close", None, None, self.reject), spacing=8),
+            spacing=12, margins=(22, 20, 22, 18)))
+
+    def _row(self, c):
+        w = QFrame()
+        w.setObjectName("Transparent")
+        text = vbox(spacing=2)
+        top = hbox(label(c["title"], "H3"), spacing=8)
+        if c["restart_pending"]:
+            top.addWidget(Badge("RESTART TO FINISH", "warning"))
+        top.addStretch(1)
+        text.addLayout(top)
+        bits = []
+        if c["from"] or c["to"]:
+            bits.append(f"{c['from'] or '?'} → {c['to'] or '?'}")
+        if c["group"]:
+            bits.append(c["group"])
+        if c["time"]:
+            bits.append("changed " + _when(c["time"]))
+        if bits:
+            text.addWidget(label("  ·  ".join(bits), "Faint", wrap=True))
+        undo = button("Undo", "undo", None, lambda _checked=False, iid=c["id"]: self._undo([iid]))
+        undo.setAccessibleName(f"Undo: {c['title']}")
+        self.undo_buttons[c["id"]] = undo
+        lay = hbox(text, undo, spacing=12, margins=(4, 10, 4, 10))
+        lay.setStretch(0, 1)
+        w.setLayout(lay)
+        return w
+
+    def _undo_all_clicked(self):
+        if not self.btn_all.property("armed"):
+            self.btn_all.setProperty("armed", True)
+            self.btn_all.setText(f"Yes, undo all {len(self.changes)}")
+            self.confirm_text.setText("Every setting above goes back to how it was before TrueStretch. Click again "
+                                      "to confirm.")
+            return
+        self._undo(None)
+
+    def _undo(self, ids):
+        self.accept()
+        self.page.undo(ids)
+
+
+def _when(t):
+    today = datetime.now().date()
+    if t.date() == today:
+        return f"today {t:%H:%M}"
+    return f"{t:%d %b %Y}".lstrip("0")
 
 
 def _icon(name, color, size):

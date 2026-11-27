@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QPA_FONTDIR", "C:/Windows/Fonts")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PySide6.QtWidgets import QApplication                 # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel         # noqa: E402
 
 app = QApplication([])
 logging.getLogger().addHandler(logging.NullHandler())      # the deliberate failure below is logged, not printed
@@ -381,6 +381,74 @@ game.show_tab("resolution"); pump(0.05)
 game.desktop_now.setText("")
 game.show_tab("display"); pump(0.1)
 check(game.desktop_now.text() != "", f"opening the Display tab fills it ({game.desktop_now.text()})")
+
+# ---- Optimize (2.4.0): result card, Your changes, restart reminder ---------------------------------
+from truestretch import optimizer as _opt                     # noqa: E402
+from truestretch.ui import optimize_page as _op               # noqa: E402
+
+win.navigate("optimize"); pump(0.1)
+op = win.pages["optimize"]
+for _ in range(600):
+    pump(0.05)
+    if op._scanned and not op.busy:
+        break
+saved_undo = op.opt._undo_data()                              # temp APPDATA: empty, but keep the rule
+fx = [_opt.Item(f"fx{n}", "Windows", f"Fake {n}", "", "Off", "On", _opt.DONE, imp, 2, restart=(n == 2))
+      for n, imp in enumerate(["More FPS", "More FPS", "Lower input delay", "Steadier FPS"])]
+bad = _opt.Item("fxbad", "Network", "Fake broken", "", "Off", "On", _opt.IMPROVE, "Stable ping", 2)
+op.last_run = _op.summarize([(i, True, "") for i in fx] + [(bad, False, "Windows still reports Off")])
+op.filter = "todo"
+op.render(); pump(0.1)
+cards = [w for w in op.findChildren(_op.ResultCard) if w.isVisible()]
+check(len(cards) == 1, "after Optimize a result card is shown on the To do view")
+txt = " ".join(lb.text() for lb in cards[0].findChildren(QLabel)) if cards else ""
+check("4 of 5 changes worked" in txt and "Fake broken" in txt and "Windows still reports Off" in txt
+      and "after a restart" in txt, "it says what worked, what didn't (with the reason) and that a restart is needed")
+check("MORE FPS · 2" in txt, "it counts what the changes improve")
+win.resize(900, 620); pump(0.3)
+card = cards[0] if cards else None
+check(card is not None and card.width() <= op.viewport().width() and all(
+    b.geometry().right() <= card.width() for b in card.findChildren(_op.Badge)),
+    "the result card and its tags fit at 900 px")
+op.verticalScrollBar().setValue(0)
+op._show_result(); pump(0.1)
+top = card.mapTo(op.viewport(), card.rect().topLeft()).y() if card else -1
+check(card is not None and 0 <= top < op.viewport().height(), f"after Optimize the card is scrolled into view ({top})")
+win.resize(1280, 800); pump(0.1)
+op.dismiss_result(); pump(0.1)
+check(not [w for w in op.findChildren(_op.ResultCard) if w.isVisible()], "Dismiss removes the card")
+
+# Your changes: count on the button, list, two-step Undo all.
+now = datetime.now().isoformat(timespec="seconds")
+op.opt._save_undo({"game_mode": {"time": now, "title": "Game Mode", "from": "Off", "to": "On", "group": "Windows"},
+                   "hags": {"time": now, "title": "GPU scheduling", "admin": True, "restart": True,
+                            "undo_cmds": ["x"]}})
+op.render(); pump(0.05)
+check(op.btn_changes.text() == "Your changes (2)" and op.btn_changes.isEnabled(), "the button counts the changes")
+check(op.restart_note.isVisible() and "GPU scheduling" in op.restart_note.text(),
+      "the score card reminds to restart for a change that needs it")
+asked = []
+orig_undo = op.undo
+op.undo = lambda ids: asked.append(ids)
+dlg = _op.ChangesDialog(op)
+dlg.show(); pump(0.1)
+check(set(dlg.undo_buttons) == {"game_mode", "hags"}, "Your changes lists every change with its own Undo")
+dtxt = " ".join(lb.text() for lb in dlg.findChildren(QLabel))
+check("Off → On" in dtxt and "changed today" in dtxt and "RESTART TO FINISH" in dtxt,
+      "each change shows from → to, when, and a pending restart")
+dlg.btn_all.click(); pump(0.05)
+check(asked == [] and dlg.btn_all.text().startswith("Yes, undo all"), "Undo all asks for a second click first")
+dlg.btn_all.click(); pump(0.05)
+check(asked == [None], "the second click undoes everything")
+dlg2 = _op.ChangesDialog(op)
+dlg2.show(); pump(0.05)
+dlg2.undo_buttons["game_mode"].click(); pump(0.05)
+check(asked[-1] == ["game_mode"], "Undo on one row undoes just that change")
+op.undo = orig_undo
+op.opt._save_undo(saved_undo)
+op.render(); pump(0.05)
+check(op.btn_changes.text() == "Your changes" and not op.btn_changes.isEnabled() and not op.restart_note.isVisible(),
+      "no changes: button disabled, no reminder")
 
 print("\nALL PASSED" if not fails else f"\n{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

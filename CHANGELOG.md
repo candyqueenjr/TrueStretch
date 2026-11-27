@@ -2,6 +2,24 @@
 
 All notable changes to TrueStretch. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-11-27
+
+Optimize Max day: results explained, every change listed and undoable without the scan, restart reminders, one new check.
+
+### Added
+- **Result card after Optimize** (`ui/optimize_page.py` `summarize`, `ResultCard`): changes made and verified, what they improve (impact counts), the settings changed, failures with their reason, a restart hint; shown at the top of the list until dismissed and scrolled into view on small windows. Before, fixed rows left the default *To do* view and the only feedback was a toast.
+- **Your changes** (`ChangesDialog`, button with a count replacing *Undo all* on the score card): every change still in place, newest first, with from → to, group, time, a *Restart to finish* tag and Undo per change; *Undo all* needs a second click.
+- **Restart reminder** on the score card (`Optimizer.restart_pending`): changes that need a restart are flagged in the undo file and reminded until Windows' boot time (`GetTickCount64`) is later than the change.
+- **Windows Update uploads (Delivery Optimization)** check in *Network* (`optimizer_more.delivery_item`): reads `Get-DOConfig` (DownloadMode / DownloadModeProvider / MaxUploadRatePct); mode 3 (*PCs on the internet*) set by Windows' default or Settings → to do, switched to 1 (*PCs on my local network*) via `HKU\S-1-5-20\…\DeliveryOptimization\Settings\DownloadMode` (administrator, restart); undo restores 3 or deletes the value; set by policy/MDM → information only.
+- `tests/test_optimizer_undo.py` (scratch registry key, captured admin commands and power writes: fallback undo byte-identical incl. REG_BINARY and a value that didn't exist, admin undo commands kept, restart reminder vs boot time, change list order, Delivery Optimization states, summary) in `run_all.py` and the CI list. `tests/test_ui.py`: result card (text, fits at 900 px, scrolled into view, dismiss), Your changes (count, rows, two-step Undo all, Undo per row), restart reminder. `tests/shots3.py`: `optimize:result` and `changes` with example data.
+
+### Changed
+- **Undo no longer depends on today's scan** (`Item.fallback`, `fallback_backup`, `run_fallback`): each undo entry stores a self-describing backup (registry values incl. binary as hex, power-plan index, power mode) and, for administrator changes, the undo commands. Undo uses the item's own restore when the scan lists it and the stored backup otherwise; entries with neither are reported as failed and kept. Registry, power-plan, power-mode, startup-app, transparency and mouse rows carry one.
+- Undo entries also keep group, from, to and impact for the list.
+
+### Fixed
+- An Undo button wired with a default argument received Qt's `checked` flag instead of the change id (caught by the new UI test before release; the per-row buttons in the dialog use `_checked=False`).
+
 ## [2.3.0] — 2026-11-26
 
 Feature day: Game Color (ROADMAP C3).

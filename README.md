@@ -32,7 +32,7 @@ undone.
 | **One click** | *Play stretched* prepares everything and starts VALORANT. Menus stay normal; the stretch switches on as soon as a match or the Range has loaded. |
 | **Fully automatic** | Adds the custom resolution to your graphics driver, sets full-screen scaling, turns the monitor drivers off and sets VALORANT to Windowed fullscreen + Fill. If a driver can't add a size, the closest one your screen already has is used. |
 | **Four stretch levels** | Light, Classic 4:3, Strong, Extreme — or any size. Change it live in a match with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> toggles. |
-| **Optimize Max** | Windows (power mode, Game Mode, Game Bar recording, windowed-game optimizations, GPU scheduling, refresh rate, Sticky/Filter/Toggle Keys shortcut pop-ups, a switched-off page file, and proof of which graphics chip VALORANT really ran on), NVIDIA driver settings for VALORANT's profile only, VALORANT's graphics files for every account, the in-game settings (read from your account, with the value to pick), and your last match's real FPS and game delay with what limits the FPS (graphics card, processor or FPS cap), whether VALORANT itself or your other programs filled the memory or took the processor, and how it compares with your matches before Optimize Max. Every change verified and undoable. |
+| **Optimize Max** | Windows (power mode, Game Mode, Game Bar recording, windowed-game optimizations, GPU scheduling, refresh rate, Windows Update uploading to strangers' PCs, Sticky/Filter/Toggle Keys shortcut pop-ups, a switched-off page file, and proof of which graphics chip VALORANT really ran on), NVIDIA driver settings for VALORANT's profile only, VALORANT's graphics files for every account, the in-game settings (read from your account, with the value to pick), and your last match's real FPS and game delay with what limits the FPS (graphics card, processor or FPS cap), whether VALORANT itself or your other programs filled the memory or took the processor, and how it compares with your matches before Optimize Max. Every change verified and undoable; after Optimize a summary says what changed and what it improves, and *Your changes* lists everything TrueStretch changed with Undo per change. |
 | **Match history** | After every match: average FPS, slow frames, game delay and what held the FPS back, from VALORANT's own statistics. The *Matches* page keeps your history (VALORANT deletes its old logs after a few days) and shows what Optimize Max or a new stretch size did to your FPS. |
 | **Servers** | Your ping to every VALORANT server of your region, measured by the game itself at each start: which server VALORANT prefers for you, your lowest-ping server, how steady your ping is between game starts and the Network Buffering setting that fits — plus Riot's current server status for your region. |
 | **Game Color** | Vivid colours in VALORANT only: NVIDIA digital vibrance or AMD saturation turns up while VALORANT is the window in front and goes back the moment you alt-tab, close the game or quit TrueStretch — even after a crash. Four strengths and a 4-second preview on your desktop. |
@@ -160,8 +160,8 @@ the closest stretched resolution your screen already offers (for example 1400×1
 <details>
 <summary><b>How do I undo everything?</b></summary>
 <br>
-VALORANT page → <b>Restore normal</b> puts back your original settings files. <b>Optimize Max → Undo all</b> reverts
-every optimization. <b>My PC → Monitor drivers → Turn back on</b> re-enables the monitor drivers.
+VALORANT page → <b>Restore normal</b> puts back your original settings files. <b>Optimize Max → Your changes → Undo all</b>
+reverts every optimization (or undo them one by one there). <b>My PC → Monitor drivers → Turn back on</b> re-enables the monitor drivers.
 </details>
 
 <details>

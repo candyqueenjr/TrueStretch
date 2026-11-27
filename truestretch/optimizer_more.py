@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import accesskeys, pagefile, powerplan
 from .optimizer import (DONE, GAME_EXE, HKCU, HKLM, IMPROVE, IN_GAME, INFO, NO_WINDOW, OPTIONAL, UNAVAILABLE, Item,
-                        _dbg, _reg, _reg_dword, _reg_restore, _reg_snapshot)
+                        _dbg, _reg, _reg_dword, _reg_restore, _reg_snapshot, reg_spec)
 from .system import running_processes
 
 # ---- Windows power plan internals (the active plan, "plugged in" values only) ------------------------------
@@ -72,7 +72,7 @@ def power_items(pc):
                           impact, level, note=note,
                           debug=[f"powrprof PowerReadACValueIndex {sub} {setting}: AC index = {value:#x}"],
                           _apply=lambda s=sub, st=setting, w=want: _power_set(s, st, w),
-                          _snapshot=lambda v=value: v,
+                          _snapshot=lambda v=value: v, fallback={"kind": "power", "sub": sub, "setting": setting},
                           _restore=lambda d, s=sub, st=setting: _power_set(s, st, d)))
     return items
 
@@ -87,7 +87,7 @@ def transparency_item():
                 "graphics work in the background. Purely cosmetic.", "On" if on else "Off", "Off",
                 OPTIONAL if on else DONE, "Less background work", 1, debug=[_dbg(HKCU, key, name, raw)],
                 _apply=lambda: _reg_dword(HKCU, key, name, 0), _snapshot=lambda: _reg_snapshot(HKCU, key, name),
-                _restore=lambda d: _reg_restore(HKCU, key, d))
+                _restore=lambda d: _reg_restore(HKCU, key, d), fallback=reg_spec(HKCU, key, name))
 
 
 def page_file_item(pc=None, entries=..., live_mb=...):
@@ -265,6 +265,7 @@ def startup_items():
                           debug=[where, f"StartupApproved: {data.hex() if data else 'not set (enabled)'}"],
                           _apply=lambda k=approved_key, n=name: _set_approved(k, n, bytes([3]) + bytes(11)),
                           _snapshot=lambda d=data: d.hex() if d else None,
+                          fallback=reg_spec(HKCU, approved_key, name),
                           _restore=lambda d, k=approved_key, n=name: _restore_approved(k, n, d)))
     return items
 
@@ -409,6 +410,63 @@ def network_item():
                     "a cable. If you can, plug in an Ethernet cable — it's the biggest ping improvement there is.",
                     "Wi-Fi", "Ethernet cable", INFO, "Stable ping", 3, debug=dbg)
     return None
+
+
+# ---- Delivery Optimization: Windows Update sharing downloads with PCs on the internet ---------------------------
+
+DO_KEY = r"HKU\S-1-5-20\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings"
+DO_MODES = {0: "Off (Microsoft only)", 1: "PCs on my local network", 2: "PCs in my organisation",
+            3: "PCs on the internet", 99: "Off (simple mode)", 100: "Off (bypass)"}
+DO_PROVIDERS = {5: "a policy", 7: "your organisation (MDM)", 8: "Windows Settings", 9: "an administrator",
+                99: "Windows' default"}
+
+
+def delivery_config():
+    """Windows' effective Delivery Optimization setting: {"mode": int, "provider": int, "upload_pct": int} or None."""
+    data = _ps_json("Get-DOConfig | Select-Object @{n='mode';e={[int]$_.DownloadMode}},"
+                    "@{n='provider';e={[int]$_.DownloadModeProvider}},@{n='upload_pct';e={[int]$_.MaxUploadRatePct}}")
+    return data[0] if data and isinstance(data[0], dict) and "mode" in data[0] else None
+
+
+def delivery_item(cfg=...):
+    """Microsoft's Delivery Optimization reference: download mode 3 = also upload Windows/Store updates to PCs on the
+    internet. Uploading in the background competes with VALORANT for your upload bandwidth (ping spikes on slower
+    connections). Mode 1 (local network) keeps faster updates between your own PCs and uploads nothing outside."""
+    cfg = delivery_config() if cfg is ... else cfg
+    if not cfg:
+        return None
+    try:
+        mode, provider = int(cfg.get("mode")), int(cfg.get("provider", 99))
+    except (TypeError, ValueError):
+        return None
+    pct = cfg.get("upload_pct")
+    title = "Windows Update uploads to other PCs"
+    why = ("Windows can share the updates it downloaded with other PCs. Set to 'PCs on the internet', it uploads "
+           "to strangers in the background, which competes with VALORANT for your upload speed and can cause ping "
+           "spikes. 'PCs on my local network' still shares between your own PCs and uploads nothing outside.")
+    now = DO_MODES.get(mode, f"Mode {mode}")
+    debug = [f"Get-DOConfig: DownloadMode={mode}, DownloadModeProvider={provider} "
+             f"({DO_PROVIDERS.get(provider, '?')}), MaxUploadRatePct={pct}", f"{DO_KEY} → DownloadMode"]
+    if mode != 3:
+        return Item("delivery_opt", "Network", title, why, now, "Local network only", DONE, "Stable ping", 2,
+                    debug=debug)
+    if provider not in (8, 99):
+        return Item("delivery_opt", "Network", title, why, now, "Local network only", INFO, "Stable ping", 2,
+                    note=f"Set by {DO_PROVIDERS.get(provider, 'your organisation')} - TrueStretch leaves it alone.",
+                    debug=debug)
+    set_cmd = f'reg add "{DO_KEY}" /v DownloadMode /t REG_DWORD /d 1 /f'
+    return Item("delivery_opt", "Network", title, why, now, "PCs on my local network", IMPROVE, "Stable ping", 2,
+                note=(f"Uploads may use up to {pct}% of your upload speed now. " if pct else "")
+                + "Needs administrator permission; Windows uses it fully after a restart.",
+                admin=True, restart=True, debug=debug, _admin_cmds=[set_cmd], _snapshot=lambda: provider,
+                _admin_undo=delivery_undo_cmds)
+
+
+def delivery_undo_cmds(provider):
+    """Back to 'PCs on the internet': the value the player had set (Settings), or no value at all (Windows' default)."""
+    if provider == 8:
+        return [f'reg add "{DO_KEY}" /v DownloadMode /t REG_DWORD /d 3 /f']
+    return [f'reg delete "{DO_KEY}" /v DownloadMode /f']
 
 
 # ---- More NVIDIA settings (VALORANT's profile only) ------------------------------------------------------------
